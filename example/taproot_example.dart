@@ -22,17 +22,23 @@ class EventCompleters {
   final signature = Completer<cl.SchnorrSignature>();
 
   EventCompleters(Stream<ClientEvent> events) {
-    events.listen((event) {
-      switch (event) {
-        case UpdatedDkgClientEvent():
-          if (!gotDkg.isCompleted) gotDkg.complete();
-        case SignaturesRequestClientEvent():
-          gotSigsReq.complete();
-        case SignaturesCompleteClientEvent():
-          signature.complete(event.signatures.first);
-        case _: break;
-      }
-    });
+    events.listen(
+      (event) {
+        switch (event) {
+          case UpdatedDkgClientEvent():
+            if (!gotDkg.isCompleted) gotDkg.complete();
+          case SignaturesRequestClientEvent():
+            gotSigsReq.complete();
+          case SignaturesCompleteClientEvent():
+            signature.complete(event.signatures.first);
+          case _: break;
+        }
+      },
+      onError: (Object err) {
+        print("Got error: $err");
+        exit(1);
+      },
+    );
   }
 
 }
@@ -154,11 +160,16 @@ void main() async {
   print("DKG took $dkgTime\n");
 
   final taproot = cl.Taproot(internalKey: derivedPubkey);
-  final address = cl.P2TRAddress.fromTaproot(
+  final testnetAddr = cl.P2TRAddress.fromTaproot(
     taproot, hrp: cl.Network.testnet.bech32Hrp,
   );
-  print("Testnet Taproot address: $address");
-  print("Send exactly 10 tPPC to this address");
+  final mainnetAddr = cl.P2TRAddress.fromTaproot(
+    taproot, hrp: cl.Network.mainnet.bech32Hrp,
+  );
+  print("Testnet Taproot address: $testnetAddr");
+  print("Mainnet Taproot address: $mainnetAddr");
+  print("Send exactly 0.02 tPPC or PPC to one of these addresses.");
+  print("These funds will be lost.");
 
   final txid = getCommandLineString("What is the txid?");
   final outI = getCommandLineInt("What is output index?", 0, 0xffffffff);
@@ -173,38 +184,43 @@ void main() async {
   final unsignedTx = cl.Transaction(
     inputs: [unsignedInput],
     outputs: [
-      cl.Output.fromProgram(
+      cl.Output.fromAddress(
         // Gives 0.01 PPC as fee. Use CoinSelection to construct transactions
         // with proper fee handling and input selection.
-        cl.CoinUnit.coin.toSats("9.99"),
-        program,
+        cl.CoinUnit.coin.toSats("0.01"),
+        cl.Address.fromString(
+          "PNgXhusHFPt4wU1NzVG5z2bihTnSV87iwR",
+          cl.Network.mainnet,
+        ),
       ),
     ],
   );
 
-  final sigHash = cl.TaprootSignatureHasher(
-    cl.TaprootSignDetails(
-      tx: unsignedTx,
-      inputN: 0,
-      prevOuts: [cl.Output.fromProgram(cl.CoinUnit.coin.toSats("10"), program)],
-      hashType: cl.SigHashType.schnorrDefault(),
-      isScript: false,
-    ),
-  ).hash;
+  // Create signature details
+
+  final trDetails = cl.TaprootKeySignDetails(
+    tx: unsignedTx,
+    inputN: 0,
+    prevOuts: [cl.Output.fromProgram(cl.CoinUnit.coin.toSats("0.02"), program)],
+  );
 
   // Sign signature hash
 
   final requestDetails = SignaturesRequestDetails(
     requiredSigs: [
       SingleSignatureDetails(
-        signDetails: SignDetails.keySpend(message: sigHash),
+        signDetails: SignDetails.keySpend(
+          message: cl.TaprootSignatureHasher(trDetails).hash,
+        ),
         groupKey: pubkey,
         hdDerivation: [0, 0x7fffffff],
       ),
     ],
     expiry: Expiry(Duration(minutes: 3)),
-    // In reality, the metadata of the transaction should be included so that
-    // other participants can determine what is being signed.
+    metadata: TaprootTransactionSignatureMetadata(
+      transaction: unsignedTx,
+      signDetails: [trDetails],
+    ),
   );
 
   await clients.first.requestSignatures(requestDetails);
@@ -237,6 +253,7 @@ void main() async {
   await Future.wait(clients.map((client) => client.logout()));
   server.shutdown();
 
+  // Recommended to use exit() to protect against gRPC hanging
   exit(0);
 
 }

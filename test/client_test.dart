@@ -46,8 +46,18 @@ void main() {
       clientsToLogout.clear();
     });
 
-    Future<TestClient> login(int i, [InMemoryClientStorage? storage]) async {
-      final client = await TestClient.login(ctx.api, i, storage: storage);
+    Future<TestClient> login(
+      int i, {
+        InMemoryClientStorage? storage,
+        void Function()? onDisconnect,
+      }
+    ) async {
+      final client = await TestClient.login(
+        ctx.api,
+        i,
+        storage: storage,
+        onDisconnect: onDisconnect,
+      );
       clientsToLogout.add(client);
       return client;
     }
@@ -152,22 +162,10 @@ void main() {
     });
 
     test("logout old client object if re-login", () async {
-
-      final logoutCompleter = Completer<bool>();
-      await TestClient.login(
-        ctx.api,
-        0,
-        onDisconnect: () => logoutCompleter.complete(true),
-      );
+      bool disconnected = false;
+      await login(0, onDisconnect: () => disconnected = true);
       await TestClient.login(ctx.api, 0);
-      expect(
-        await Future.any([
-          Future<bool>.delayed(Duration(seconds: 1), () => false),
-          logoutCompleter.future,
-        ]),
-        true,
-      );
-
+      await waitFor(() => disconnected);
     });
 
     test("handles multiple logouts immediately", () async {
@@ -276,19 +274,27 @@ void main() {
 
     test("handles incorrect participant login event", () async {
 
-      final tc = await login(0);
-
       await expectBadEvent(
-        tc,
+        await login(0),
         ParticipantStatusEvent(id: invalidId, loggedIn: true),
       );
 
       // Shouldn't receive for self
       await expectBadEvent(
-        tc,
+        await login(0),
         ParticipantStatusEvent(id: ids.first, loggedIn: true),
       );
 
+    });
+
+    test("handles error made on server stream and disconnects", () async {
+      bool disconnected = false;
+      final tc = await login(0, onDisconnect: () => disconnected = true);
+      ctx.api.state.clientSessions.values.first.eventController.addError(
+        Exception("Test exception"),
+      );
+      await tc.evCollector.expectError<Exception>();
+      await waitFor(() => disconnected);
     });
 
     test("requestDkg success", () async {
@@ -298,7 +304,9 @@ void main() {
       await tc1.expectOnlyLoginEvents();
 
       // Client 1 sends request, allowing n-of-n
+      expect(tc1.client.dkgExists("123"), false);
       await tc1.client.requestDkg(getDkgDetails(threshold: 10));
+      expect(tc1.client.dkgExists("123"), true);
 
       void expectProgress(
         DkgInProgress progress,
@@ -315,6 +323,7 @@ void main() {
       final evs = await tc2.evCollector.getEvents();
       expect(evs.length, 1);
       expectProgress((evs.first as UpdatedDkgClientEvent).progress);
+      expect(tc2.client.dkgExists("123"), true);
 
       // Both clients have the DKG before and after relogin
       void expectDkg(Client client, bool accepted, bool firstAccepted) {
@@ -389,68 +398,43 @@ void main() {
 
     test("handles incorrect DKG request event", () async {
 
-      final tc = await login(5);
+      Future<void> expectBadDkg({
+        Signed<NewDkgDetails>? details,
+        Identifier? creator,
+        DkgCommitmentList? commitments,
+      }) async {
+        await expectBadEvent(
+          await login(5),
+          NewDkgEvent(
+            details: details ?? dkgDetails,
+            creator: creator ?? ids.first,
+            commitments: commitments ?? [],
+          ),
+        );
+      }
 
       // Incorrect threshold
-      await expectBadEvent(
-        tc,
-        NewDkgEvent(
-          details: signObject(getDkgDetails(threshold: 11)),
-          creator: ids.first,
-          commitments: [],
-        ),
-      );
+      await expectBadDkg(details: signObject(getDkgDetails(threshold: 11)));
 
       // Incorrect signature
-      await expectBadEvent(
-        tc,
-        NewDkgEvent(
-          details: dkgDetails,
-          creator: ids[1],
-          commitments: [],
-        ),
-      );
+      await expectBadDkg(creator: ids[1]);
 
       // Creator not in group
-      await expectBadEvent(
-        tc,
-        NewDkgEvent(
-          details: dkgDetails,
-          creator: badId,
-          commitments: [],
-        ),
-      );
+      await expectBadDkg(creator: badId);
 
       // Creator cannot be self
-      await expectBadEvent(
-        tc,
-        NewDkgEvent(
-          details: signObject(getDkgDetails(), 5),
-          creator: ids[5],
-          commitments: [],
-        ),
+      await expectBadDkg(
+        details: signObject(getDkgDetails(), 5),
+        creator: ids[5],
       );
 
       // Commitment identifier not in group
-      await expectBadEvent(
-        tc,
-        NewDkgEvent(
-          details: dkgDetails,
-          creator: ids.first,
-          commitments: [(badId, getDkgPart1(0).public)],
-        ),
-      );
+      await expectBadDkg(commitments: [(badId, getDkgPart1(0).public)]);
 
       // Expiry too far in past
-      final dkgToChange = getDkgDetails(
-        expiry: Expiry(Duration(minutes: -2, seconds: -1)),
-      );
-      await expectBadEvent(
-        tc,
-        NewDkgEvent(
-          details: signObject(dkgToChange),
-          creator: ids.first,
-          commitments: [],
+      await expectBadDkg(
+        details: signObject(
+          getDkgDetails(expiry: Expiry(Duration(minutes: -2, seconds: -1))),
         ),
       );
 
@@ -556,12 +540,10 @@ void main() {
 
     test("handles incorrect DKG rejection event", () async {
 
-      final tc = await login(0);
-
       // Participant doesn't exist, or is self
       for (final badId in [badId, ids.first]) {
         await expectBadEvent(
-          tc,
+          await login(0),
           DkgRejectEvent(name: "123", participant: badId),
         );
       }
@@ -719,18 +701,19 @@ void main() {
       await tc.client.requestDkg(getDkgDetails());
 
       // Invalid identifier
-      {
-        await expectBadEvent(
-          tc,
-          DkgCommitmentEvent(
-            name: "123",
-            participant: badId,
-            commitment: getDkgPart1(1).public,
-          ),
-        );
-      }
+      await expectBadEvent(
+        tc,
+        DkgCommitmentEvent(
+          name: "123",
+          participant: badId,
+          commitment: getDkgPart1(1).public,
+        ),
+      );
 
       // Duplicate identifier
+
+      final tc2 = await login(0);
+
       for (int i = 0; i < 2; i++) {
         ctx.api.state.sendEventToAll(
           DkgCommitmentEvent(
@@ -741,8 +724,8 @@ void main() {
         );
       }
 
-      await tc.evCollector.getExpectOneEvent<UpdatedDkgClientEvent>();
-      await tc.evCollector.expectError<ServerMisbehaviour>();
+      await tc2.evCollector.getExpectOneEvent<UpdatedDkgClientEvent>();
+      await tc2.evCollector.expectError<ServerMisbehaviour>();
 
     });
 
@@ -966,7 +949,10 @@ void main() {
 
     Future<TestClient> loginWithOwnAck(
       int i, [ Set<SignedDkgAck> otherAcks = const {}, ]
-    ) => login(i, storeWithKeyAndAcks(i, { getDkgAck(i, true), ...otherAcks }));
+    ) => login(
+      i,
+      storage: storeWithKeyAndAcks(i, { getDkgAck(i, true), ...otherAcks }),
+    );
 
     test("ask and receive DKGs on logins", () async {
 
@@ -1072,13 +1058,12 @@ void main() {
 
     test("handles bad DkgAckEvent", () async {
 
-      final tc = await loginWithOwnAck(0);
       final ackWithId = getDkgAck(0, true);
       final ack1 = ackWithId.signed;
 
       // Bad identifier
       await expectBadEvent(
-        tc,
+        await loginWithOwnAck(0),
         DkgAckEvent(
           { SignedDkgAck(signer: badId, signed: ack1) },
         ),
@@ -1086,12 +1071,15 @@ void main() {
 
       // Wrong identifier, bad signature
       await expectBadEvent(
-        tc,
+        await loginWithOwnAck(0),
         DkgAckEvent({ SignedDkgAck(signer: ids[1], signed: ack1) }),
       );
 
       // Can't be self
-      await expectBadEvent(tc, DkgAckEvent({ ackWithId }));
+      await expectBadEvent(
+        await loginWithOwnAck(0),
+        DkgAckEvent({ ackWithId }),
+      );
 
     });
 
@@ -1124,8 +1112,10 @@ void main() {
       late List<TestClient> tcs;
       late SignaturesRequestId missingReqId;
 
+      Future<TestClient> loginOne(int i) => login(i, storage: stores[i]);
+
       Future<void> loginAll() async {
-        tcs = await Future.wait(List.generate(10, (i) => login(i, stores[i])));
+        tcs = await Future.wait(List.generate(10, (i) => loginOne(i)));
         for (final tc in tcs) {
           await tc.expectOnlyLoginEvents();
         }
@@ -1136,6 +1126,11 @@ void main() {
           await tc.logout();
         }
         await loginAll();
+      }
+
+      Future<void> expectBadEventRelogin(int i, Event ev) async {
+        await expectBadEvent(tcs[i], ev);
+        tcs[i] = await loginOne(i);
       }
 
       SignaturesRequestDetails getSigDetailsWithKeys(
@@ -1274,13 +1269,15 @@ void main() {
         Future<void> expectBadSigReqEv(
           Signed<SignaturesRequestDetails> details,
           Identifier id,
-        ) => expectBadEvent(
-          tcs.first,
-          SignaturesRequestEvent(
-            details: details,
-            creator: id,
-          ),
-        );
+        ) async {
+          await expectBadEventRelogin(
+            0,
+            SignaturesRequestEvent(
+              details: details,
+              creator: id,
+            ),
+          );
+        }
 
         // Incorrect signature
         await expectBadSigReqEv(signObject(reqDetails, 2), ids[1]);
@@ -1303,15 +1300,17 @@ void main() {
         );
 
         // Cannot receive signatures request we already have
-        final ev = SignaturesRequestEvent(
-          details: signObject(reqDetails, 1),
-          creator: ids[1],
-        );
-        ctx.api.state.sendEventToAll(ev);
+        await tcs[1].client.requestSignatures(reqDetails);
         await tcs.first.evCollector.expectOnlyOneEventType<
           SignaturesRequestClientEvent
         >();
-        await expectBadEvent(tcs.first, ev);
+        await expectBadEvent(
+          tcs.first,
+          SignaturesRequestEvent(
+            details: signObject(reqDetails, 1),
+            creator: ids[1],
+          ),
+        );
 
       });
 
@@ -1325,6 +1324,7 @@ void main() {
             details: signObject(details, 1),
             creator: ids[1],
           ),
+          exclude: [ctx.api.state.participantToSession[ids[1]]!.sessionID],
         );
 
         final ev = await tcs.first.evCollector
@@ -1378,11 +1378,11 @@ void main() {
         expect(state.rejectors, hasLength(3));
 
         // Log in one of the other clients and receive another rejection
-        await login(1, stores[1]);
+        await login(1, storage: stores[1]);
         expect(state.rejectors, hasLength(4));
 
         // One other login and the threshold of failure is attained
-        await login(2, stores[2]);
+        await login(2, storage: stores[2]);
 
         expect(ctx.api.state.sigRequests.values, isEmpty);
 
@@ -1579,7 +1579,7 @@ void main() {
                 sigRounds: badSigRounds,
               ),
             );
-            await expectMisbehaviour(() => login(0, stores.first));
+            await expectMisbehaviour(() => login(0, storage: stores.first));
           }
 
         });
@@ -1614,7 +1614,7 @@ void main() {
             ),
           ]) {
             ctx = TestContext(LoginRespMockApi(completedSigs: [completedSig]));
-            await expectMisbehaviour(() => login(0, stores.first));
+            await expectMisbehaviour(() => login(0, storage: stores.first));
           }
 
           // Check that the validFirstSig does pass for correct request
@@ -1630,7 +1630,7 @@ void main() {
             ),
           );
 
-          await login(0, stores.first);
+          await login(0, storage: stores.first);
 
         });
 
@@ -1731,7 +1731,7 @@ void main() {
           }
 
           // Login again and reject signature as a result of not having nonce
-          tcs.first = await login(0, tcs.first.store);
+          tcs.first = await login(0, storage: tcs.first.store);
           await waitForAndExpectRejected(0);
 
         }
@@ -1750,7 +1750,7 @@ void main() {
         test("invalid SignatureNewRoundsEvent", () async {
 
           for (final badEv in badNewRounds) {
-            await expectBadEvent(tcs.first, badEv);
+            await expectBadEventRelogin(0, badEv);
           }
 
           // Reject signature so signing is not attempted when sending round
@@ -1781,8 +1781,8 @@ void main() {
         test("invalid SignaturesCompleteEvent", () async {
 
           // No signatures
-          await expectBadEvent(
-            tcs.first,
+          await expectBadEventRelogin(
+            0,
             SignaturesCompleteEvent(reqId: missingReqId, signatures: []),
           );
 
@@ -1790,8 +1790,8 @@ void main() {
             // Only one sig, or incorrect sig for second
             final sigs in [[validFirstSig], [validFirstSig, validFirstSig]]
           ) {
-            await expectBadEvent(
-              tcs.first,
+            await expectBadEventRelogin(
+              0,
               SignaturesCompleteEvent(reqId: reqDetails.id, signatures: sigs),
             );
           }
@@ -1847,7 +1847,7 @@ void main() {
           }
 
           // Completed signatures provided on login
-          tcs.last = await login(9, tcs.last.store);
+          tcs.last = await login(9, storage: tcs.last.store);
           await expectSigsEv(tcs.last);
 
           // Removed from storage
@@ -1902,8 +1902,8 @@ void main() {
 
           // First and second comes back
           // Second should remember it has rejected
-          tcs.first = await login(0, tcs.first.store);
-          tcs[1] = await login(1, tcs[1].store);
+          tcs.first = await login(0, storage: tcs.first.store);
+          tcs[1] = await login(1, storage: tcs[1].store);
 
           await expectOnlyStatusEvents([tcs.first, ...tcs.skip(2)]);
 
