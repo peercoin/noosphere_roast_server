@@ -1,14 +1,14 @@
 name: noosphere_roast_server
 description: A package for servers that coordinate ROAST threshold signatures
-version: 1.0.0
+version: 2.0.0
 
 environment:
   sdk: ^3.3.4
 
 dependencies:
   coinlib: ^4.0.0
-  frosty: ^1.1.0
-  noosphere_roast_client: ^1.1.0
+  frosty: ^2.0.0
+  noosphere_roast_client: ^2.0.0
   collection: ^1.17.1
   grpc: ^4.0.1
   args: ^2.6.0
