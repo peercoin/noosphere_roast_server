@@ -1,3 +1,3 @@
-## 2.0.0
+## 1.0.0
 
-Update to frosty 2.0.0
+Initial release of Noosphere ROAST server

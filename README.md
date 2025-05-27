@@ -13,6 +13,4 @@ Alternatively a server may be created using the package as a library.
 To use the library, the underlying [frosty](https://pub.dev/packages/frosty)
 package requires the associated native library which can be built from the
 [frosty repository](https://github.com/peercoin/frosty) using Podman or Docker.
-Linux and Android builds are supported and require placing the libraries in the
-necessary location. Please see the
-[frosty README.md](https://github.com/peercoin/frosty).
+Please see the [frosty README.md](https://github.com/peercoin/frosty).
