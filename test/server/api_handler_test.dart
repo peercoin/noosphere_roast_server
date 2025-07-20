@@ -4,6 +4,7 @@ import 'package:coinlib/coinlib.dart' as cl;
 import 'package:noosphere_roast_server/noosphere_roast_server.dart';
 import 'package:noosphere_roast_server/src/server/state/client_session.dart';
 import 'package:noosphere_roast_server/src/server/state/dkg.dart';
+import 'package:noosphere_roast_server/src/server/state/key_sharing.dart';
 import 'package:noosphere_roast_server/src/server/state/signatures_coordination.dart';
 import 'package:noosphere_roast_server/src/server/state/state.dart';
 import 'package:test/test.dart';
@@ -166,6 +167,7 @@ void main() {
         expect(response.expiry.isExpired, false);
         expect(response.id.n.length, 16);
         expect(response.onlineParticipants, {ids[1]});
+        expect(response.secretShares, isEmpty);
 
         // DKGs
         final newDkgs = response.newDkgs;
@@ -1664,6 +1666,100 @@ void main() {
           await expectFailedReq();
 
         });
+
+      });
+
+    });
+
+    group(".shareSecretShare", () {
+
+      late List<ServerTestClient> clients;
+      late EncryptedKeyShare dummyShare;
+
+      setUp(() async {
+        clients = await ctx.multiLogin(5);
+        dummyShare = EncryptedKeyShare.encrypt(
+          keyShare: getPrivkey(0),
+          recipientKey: groupPublicKey,
+          senderKey: getPrivkey(0),
+        );
+        await expectOnlyLoginEventsForAll();
+      });
+
+      test("invalid request", () async {
+
+          // Invalid Session ID
+          await expectInvalid(
+            () => ctx.api.shareSecretShare(
+              sid: SessionID(),
+              groupKey: groupPublicKey,
+              encryptedSecrets: { ids.last: dummyShare },
+            ),
+          );
+
+          Future<void> expectInvalidSecrets(
+            Map<Identifier, EncryptedKeyShare> secrets,
+          ) => expectInvalid(
+            () => ctx.api.shareSecretShare(
+              sid: clients.first.sid,
+              groupKey: groupPublicKey,
+              encryptedSecrets: secrets,
+            ),
+          );
+
+          // Cannot be empty
+          await expectInvalidSecrets({});
+
+          // Cannot send to self
+          await expectInvalidSecrets({ ids.first: dummyShare });
+
+          // Identifiers must be in group
+          await expectInvalidSecrets({ Identifier.fromUint16(11): dummyShare });
+
+      });
+
+      test("success", () async {
+
+        Future<void> sendToAll(int from) => ctx.api.shareSecretShare(
+          sid: clients[from].sid,
+          groupKey: groupPublicKey,
+          encryptedSecrets: {
+            for (final id in ids) if (id != ids[from]) id: dummyShare,
+          },
+        );
+
+        // First and second sends to everyone
+        for (int from = 0; from < 2; from++) {
+
+          await sendToAll(from);
+
+          // Expect events to logged in
+          for (int i = 0; i < 5; i++) {
+            if (i == from) continue;
+            final ev = await clients[i].getExpectOneEvent<SecretShareEvent>();
+            expect(ev.sender, ids[from]);
+            expect(ev.groupKey, groupPublicKey);
+          }
+
+        }
+
+        // Others obtain both on login
+        final furtherClients = await ctx.multiLogin(5, skip: 5);
+        for (final client in furtherClients) {
+          final shares = client.loginResponse.secretShares;
+          expect(shares.map((s) => s.sender), unorderedEquals(ids.take(2)));
+          expect(shares.map((s) => s.groupKey), everyElement(groupPublicKey));
+        }
+        await expectOnlyLoginEventsForAll();
+
+        // Ignore resend, inc. when done
+        ctx.api.state.secretShares[groupPublicKey]?.receiverShares[ids.last]
+          = ParticipantDoneShareState();
+        await sendToAll(0);
+
+        for (final client in ctx.clients) {
+          await client.expectNoEvents();
+        }
 
       });
 

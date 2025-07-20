@@ -105,6 +105,7 @@ class LoginRespMockApi extends ServerApiHandler {
       sigRequests: sigRequests,
       sigRounds: sigRounds,
       completedSigs: completedSigs,
+      secretShares: upstream.secretShares,
       events: upstream.events,
     );
   }
@@ -180,8 +181,8 @@ class TestContext {
 
   }
 
-  Future<List<ServerTestClient>> multiLogin(int n)
-    => Future.wait(List.generate(n, (i) => login(i)));
+  Future<List<ServerTestClient>> multiLogin(int n, { int skip = 0 })
+    => Future.wait(List.generate(n, (i) => login(i+skip)));
 
   DkgState addDkg(Identifier creator, String name, { int threshold = 2 }) {
     return api.state.nameToDkg[name] = DkgState(

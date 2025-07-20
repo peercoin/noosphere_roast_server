@@ -5,6 +5,7 @@ import 'package:collection/collection.dart';
 import 'package:coinlib/coinlib.dart' as cl;
 import 'package:noosphere_roast_client/noosphere_roast_client.dart';
 import 'package:noosphere_roast_server/src/config/server.dart';
+import 'package:noosphere_roast_server/src/server/state/key_sharing.dart';
 import 'state/signatures_coordination.dart';
 import 'state/client_session.dart';
 import 'state/dkg.dart';
@@ -201,6 +202,19 @@ class ServerApiHandler implements ApiRequestInterface {
           creator: sigs.creator,
         ),
       ).toList(),
+
+      secretShares: [
+        for (
+          final MapEntry(key: groupKey, value: sharingState)
+          in state.secretShares.entries
+        ) ...sharingState.getSharesForReceiver(participantId).map(
+          (share) => SecretShareEvent(
+            sender: share.sender,
+            keyShare: share.share,
+            groupKey: groupKey,
+          ),
+        ),
+      ],
 
     );
 
@@ -812,6 +826,50 @@ class ServerApiHandler implements ApiRequestInterface {
 
     // Nothing to provide otherwise
     return null;
+
+  }
+
+  @override
+  Future<void> shareSecretShare({
+    required SessionID sid,
+    required cl.ECCompressedPublicKey groupKey,
+    required Map<Identifier, EncryptedKeyShare> encryptedSecrets,
+  }) async {
+
+    final session = getSession(sid);
+    final pid = session.participantId;
+
+    // Cannot be empty
+    if (encryptedSecrets.isEmpty) throw InvalidRequest.invalidKeyShareMap();
+
+    // Cannot send to self
+    if (encryptedSecrets.containsKey(pid)) {
+      throw InvalidRequest.invalidKeyShareMap();
+    }
+
+    // Must contain identifiers in group
+    if (
+      encryptedSecrets.keys.any(
+        (id) => !config.group.participants.containsKey(id),
+      )
+    ) {
+      throw InvalidRequest.invalidKeyShareMap();
+    }
+
+    // Store ciphertexts
+    final stateMap = state.secretShares[groupKey] ??= KeySharingState();
+
+    // Add useable shares to state and ignore those that weren't
+    encryptedSecrets.removeWhere(
+      (id, share) => !stateMap.maybeAddShare(pid, id, share),
+    );
+
+    // Send ciphertexts to other participants that are online
+    for (final MapEntry(key:id, value:share) in encryptedSecrets.entries) {
+      state.participantToSession[id]?.sendEvent(
+        SecretShareEvent(sender: pid, keyShare: share, groupKey: groupKey),
+      );
+    }
 
   }
 

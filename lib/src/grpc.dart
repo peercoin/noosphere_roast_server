@@ -112,6 +112,7 @@ class FrostNoosphereService extends pb.NoosphereServiceBase {
           SignatureNewRoundsEvent() => pb.EventType.SIG_NEW_ROUNDS_EVENT,
           SignaturesCompleteEvent() => pb.EventType.SIG_COMPLETE_EVENT,
           SignaturesFailureEvent() => pb.EventType.SIG_FAILURE_EVENT,
+          SecretShareEvent() => pb.EventType.SECRET_SHARE_EVENT,
           KeepaliveEvent() => pb.EventType.KEEPALIVE_EVENT,
         },
       ),
@@ -263,5 +264,21 @@ class FrostNoosphereService extends pb.NoosphereServiceBase {
     );
 
   });
+
+  @override
+  Future<pb.Empty> shareSecretShare(
+    grpc.ServiceCall call,
+    pb.SecretShare request,
+  ) => _handleEmpty(
+    () => api.shareSecretShare(
+      sid: _sid(request.sid),
+      groupKey: cl.ECCompressedPublicKey(_bytes(request.groupKey)),
+      encryptedSecrets: {
+        for (final secret in request.secrets)
+          Identifier.fromBytes(_bytes(secret.id))
+            : EncryptedKeyShare(ECCiphertext.fromBytes(_bytes(secret.share))),
+      },
+    ),
+  );
 
 }

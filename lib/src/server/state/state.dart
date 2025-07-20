@@ -3,6 +3,7 @@ import 'package:noosphere_roast_client/common.dart';
 import 'package:noosphere_roast_client/noosphere_roast_client.dart';
 import 'client_session.dart';
 import 'dkg.dart';
+import 'key_sharing.dart';
 import 'signatures_coordination.dart';
 
 class ChallengeDetails implements Expirable {
@@ -55,6 +56,9 @@ class ServerState {
   final completedSigs = ExpirableMap<
     SignaturesRequestId, CompletedSignatures
   >();
+  /// Maps the encrypted secret shares to a FROST group key for sharing to
+  /// participants
+  final Map<cl.ECCompressedPublicKey, KeySharingState> secretShares = {};
 
   ServerState() {
     clientSessions = ExpirableMap(
