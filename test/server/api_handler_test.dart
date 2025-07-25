@@ -45,7 +45,7 @@ void main() {
           () => ctx.api.login(
             groupFingerprint: groupConfig.fingerprint,
             participantId: ids.first,
-            protocolVersion: 2,
+            protocolVersion: 1,
           ),
         );
 
@@ -166,6 +166,7 @@ void main() {
         // Expect response
         expect(response.expiry.isExpired, false);
         expect(response.id.n.length, 16);
+        expect(response.startTime, ctx.api.startTime);
         expect(response.onlineParticipants, {ids[1]});
         expect(response.secretShares, isEmpty);
 

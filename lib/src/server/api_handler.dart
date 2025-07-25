@@ -19,10 +19,11 @@ import 'state/state.dart';
 /// The methods should be called sequentially without concurrency.
 class ServerApiHandler implements ApiRequestInterface {
 
-  static const currentProtocolVersion = 1;
+  static const currentProtocolVersion = 2;
 
   final ServerConfig config;
   final ServerState state;
+  final DateTime startTime = DateTime.now();
 
   /// Creates a backend API handler with the [config]. A blank [state] will be
   /// created if not provided.
@@ -168,6 +169,7 @@ class ServerApiHandler implements ApiRequestInterface {
 
       id: sessionId,
       expiry: expiry,
+      startTime: startTime,
       onlineParticipants: online,
       events: session.eventController.stream,
 

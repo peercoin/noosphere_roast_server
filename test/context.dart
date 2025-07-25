@@ -100,6 +100,7 @@ class LoginRespMockApi extends ServerApiHandler {
     return LoginCompleteResponse(
       id: upstream.id,
       expiry: upstream.expiry,
+      startTime: upstream.startTime,
       onlineParticipants: upstream.onlineParticipants,
       newDkgs: upstream.newDkgs,
       sigRequests: sigRequests,
