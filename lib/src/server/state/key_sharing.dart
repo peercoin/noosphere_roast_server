@@ -37,6 +37,12 @@ class KeySharingState {
   List<KeyShareFromSender> getSharesForReceiver(Identifier receiver)
     => receiverShares[receiver]?.pendingShares ?? [];
 
+  List<ConstructedKeyEvent> eventsForCompleted(Iterable<Identifier> ids)
+    => ids.map((id) => receiverShares[id])
+    .whereType<ParticipantDoneShareState>()
+    .map((state) => state.constructedEvent)
+    .toList();
+
 }
 
 sealed class ParticipantShareState {
@@ -45,14 +51,10 @@ sealed class ParticipantShareState {
 
 class ParticipantPendingShareState extends ParticipantShareState {
 
-  /// The encrypted key shares that have not been acknowledged as received
+  /// The encrypted key shares that the server has for the participant
   final Map<Identifier, EncryptedKeyShare> pendingForSender = {};
-  /// The senders of the key shares that have been acknowledged as received
-  final Set<Identifier> acknowledgedForSender = {};
 
-  bool haveForSender(Identifier sender)
-    => pendingForSender.containsKey(sender)
-    || acknowledgedForSender.contains(sender);
+  bool haveForSender(Identifier sender) => pendingForSender.containsKey(sender);
 
   @override
   List<KeyShareFromSender> get pendingShares => pendingForSender.entries.map(
@@ -61,4 +63,9 @@ class ParticipantPendingShareState extends ParticipantShareState {
 
 }
 
-class ParticipantDoneShareState extends ParticipantShareState {}
+/// Used after the participant acknowledged the completion of the construction
+/// of the FROST key's private key
+class ParticipantDoneShareState extends ParticipantShareState {
+  final ConstructedKeyEvent constructedEvent;
+  ParticipantDoneShareState(this.constructedEvent);
+}

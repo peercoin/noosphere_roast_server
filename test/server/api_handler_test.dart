@@ -4,7 +4,6 @@ import 'package:coinlib/coinlib.dart' as cl;
 import 'package:noosphere_roast_server/noosphere_roast_server.dart';
 import 'package:noosphere_roast_server/src/server/state/client_session.dart';
 import 'package:noosphere_roast_server/src/server/state/dkg.dart';
-import 'package:noosphere_roast_server/src/server/state/key_sharing.dart';
 import 'package:noosphere_roast_server/src/server/state/signatures_coordination.dart';
 import 'package:noosphere_roast_server/src/server/state/state.dart';
 import 'package:test/test.dart';
@@ -1719,14 +1718,36 @@ void main() {
 
       });
 
-      test("success", () async {
+      test("success with ackKeyConstructed", () async {
 
-        Future<void> sendToAll(int from) => ctx.api.shareSecretShare(
-          sid: clients[from].sid,
-          groupKey: groupPublicKey,
-          encryptedSecrets: {
-            for (final id in ids) if (id != ids[from]) id: dummyShare,
-          },
+        void expectCompleted(ConstructedKeyEvent event, int who) {
+          expect(event.participant, ids[who]);
+          expect(event.constructedKey.obj.publicKey, groupPublicKey);
+          expect(event.constructedKey.verify(getPrivkey(who).pubkey), true);
+        }
+
+        Future<void> sendTo(
+          int from,
+          Iterable<int> to,
+          { int? expectedCompleted, }
+        ) async {
+          final events = await ctx.api.shareSecretShare(
+            sid: clients[from].sid,
+            groupKey: groupPublicKey,
+            encryptedSecrets: { for (final id in to) ids[id]: dummyShare, },
+          );
+          if (expectedCompleted == null) {
+            expect(events, isEmpty);
+          } else {
+            expect(events, hasLength(1));
+            expectCompleted(events.first, expectedCompleted);
+          }
+        }
+
+        Future<void> sendToAll(int from, { int? expectedCompleted }) => sendTo(
+          from,
+          List.generate(10, (i) => i).where((id) => id != from),
+          expectedCompleted: expectedCompleted,
         );
 
         // First and second sends to everyone
@@ -1736,7 +1757,10 @@ void main() {
 
           // Expect events to logged in
           for (int i = 0; i < 5; i++) {
-            if (i == from) continue;
+            if (i == from) {
+              await clients[i].expectNoEvents();
+              continue;
+            }
             final ev = await clients[i].getExpectOneEvent<SecretShareEvent>();
             expect(ev.sender, ids[from]);
             expect(ev.groupKey, groupPublicKey);
@@ -1753,16 +1777,71 @@ void main() {
         }
         await expectOnlyLoginEventsForAll();
 
-        // Ignore resend, inc. when done
-        ctx.api.state.secretShares[groupPublicKey]?.receiverShares[ids.last]
-          = ParticipantDoneShareState();
-        await sendToAll(0);
+        // Give ConstructedKeyEvent after ackKeyConstructed
+
+        await ctx.api.ackKeyConstructed(
+          sid: ctx.clients.last.sid,
+          constructedKey: signObject(KeyWasConstructed(groupPublicKey), 9),
+        );
+
+        for (final client in ctx.clients.take(9)) {
+          expectCompleted(await client.getExpectOneEvent(), 9);
+        }
+        await ctx.clients.last.expectNoEvents();
+
+        // Ignore resend and obtain ConstructedKeyEvent from last participant
+        await sendToAll(0, expectedCompleted: 9);
 
         for (final client in ctx.clients) {
           await client.expectNoEvents();
         }
 
+        // 3rd gives shares to first and last. Returns ConstructedKeyEvent for
+        // last. First receives SecretShareEvent.
+
+        await sendTo(2, {0,9}, expectedCompleted: 9);
+        final ev = await clients.first.getExpectOneEvent<SecretShareEvent>();
+        expect(ev.sender, ids[2]);
+        expect(ev.groupKey, groupPublicKey);
+
+        for (final client in ctx.clients.skip(1)) {
+          await client.expectNoEvents();
+        }
+
       });
+
+    });
+
+    test(".ackKeyConstructed invalid request", () async {
+      // Success is tested alongside shareSecretShare above
+
+      final client = await ctx.login(0);
+      final wasConstructed = KeyWasConstructed(groupPublicKey);
+      final validSigned = signObject(wasConstructed);
+
+      // Invalid Session ID
+      await expectInvalid(
+        () => ctx.api.ackKeyConstructed(
+          sid: SessionID(),
+          constructedKey: validSigned,
+        ),
+      );
+
+      // Invalid signature
+      await expectInvalid(
+        () => ctx.api.ackKeyConstructed(
+          sid: client.sid,
+          constructedKey: signObject(wasConstructed, 1),
+        ),
+      );
+
+      // Cannot do twice
+      Future<void> doMethod() => ctx.api.ackKeyConstructed(
+        sid: client.sid,
+        constructedKey: validSigned,
+      );
+      await doMethod();
+      await expectInvalid(doMethod);
 
     });
 

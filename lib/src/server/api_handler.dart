@@ -102,12 +102,10 @@ class ServerApiHandler implements ApiRequestInterface {
     // Get participant id for challenge and check expiry
     final details = state.challenges[signedChallenge.obj];
     if (details == null) throw InvalidRequest.noChallenge();
-    final participantId = details.id;
+    final pid = details.id;
 
     // Verify participant has signed the challenge
-    final publickey = config.group.participants[participantId];
-    if (publickey == null) throw InvalidRequest.noParticipant();
-    if (!signedChallenge.verify(publickey)) {
+    if (!signedChallenge.verify(_getParticipantPubkeyForId(pid))) {
       throw InvalidRequest.invalidChallengeSig();
     }
 
@@ -117,7 +115,7 @@ class ServerApiHandler implements ApiRequestInterface {
     state.challenges.remove(signedChallenge.obj);
 
     // Remove any old session
-    final oldSession = state.participantToSession[participantId];
+    final oldSession = state.participantToSession[pid];
     if (oldSession != null) {
       state.clientSessions.remove(oldSession.sessionID);
       // Ensure removal of old session is handled
@@ -130,19 +128,17 @@ class ServerApiHandler implements ApiRequestInterface {
     ).toSet();
 
     // Notify other sessions of login before new session is added
-    state.sendEventToAll(
-      ParticipantStatusEvent(id: participantId, loggedIn: true),
-    );
+    state.sendEventToAll(ParticipantStatusEvent(id: pid, loggedIn: true));
 
     // Create session
     final sessionId = SessionID();
     final expiry = Expiry(config.sessionTTL);
 
     final session
-      = state.participantToSession[participantId]
+      = state.participantToSession[pid]
       = state.clientSessions[sessionId]
       = ClientSession(
-        participantId: participantId,
+        participantId: pid,
         sessionID: sessionId,
         expiry: expiry,
         // When the session stream is lost, remove the session and process the
@@ -150,7 +146,7 @@ class ServerApiHandler implements ApiRequestInterface {
         onLostStream: () {
           final sess = state.clientSessions.remove(sessionId);
           if (sess != null) {
-            state.participantToSession.remove(participantId);
+            state.participantToSession.remove(pid);
             state.onEndSession(sess);
           }
         },
@@ -191,12 +187,12 @@ class ServerApiHandler implements ApiRequestInterface {
       sigRounds: state.sigRequests.values.map(
         (sigReq) => SignatureNewRoundsEvent(
           reqId: sigReq.details.obj.id,
-          rounds: sigReq.pendingRoundsForId(participantId),
+          rounds: sigReq.pendingRoundsForId(pid),
         ),
       ).where((newRounds) => newRounds.rounds.isNotEmpty).toList(),
 
       completedSigs: state.completedSigs.values
-      .where((sigs) => !sigs.acks.contains(participantId))
+      .where((sigs) => !sigs.acks.contains(pid))
       .map(
         (sigs) => CompletedSignaturesRequest(
           details: sigs.details,
@@ -209,7 +205,7 @@ class ServerApiHandler implements ApiRequestInterface {
         for (
           final MapEntry(key: groupKey, value: sharingState)
           in state.secretShares.entries
-        ) ...sharingState.getSharesForReceiver(participantId).map(
+        ) ...sharingState.getSharesForReceiver(pid).map(
           (share) => SecretShareEvent(
             sender: share.sender,
             keyShare: share.share,
@@ -274,7 +270,7 @@ class ServerApiHandler implements ApiRequestInterface {
     );
 
     // Broadcast to other participants
-    state.sendEventToAll(dkgEvent, exclude: [sid]);
+    state.sendEventToOthers(dkgEvent, sid);
 
   }
 
@@ -283,9 +279,9 @@ class ServerApiHandler implements ApiRequestInterface {
     final participantId = getSession(sid).participantId;
     if (state.nameToDkg.remove(name) != null) {
       // Send an event to all other participants that the DKG was removed
-      state.sendEventToAll(
+      state.sendEventToOthers(
         DkgRejectEvent(name: name, participant: participantId),
-        exclude: [sid],
+        sid,
       );
     }
   }
@@ -320,9 +316,9 @@ class ServerApiHandler implements ApiRequestInterface {
     }
 
     // Send commitment to other participants
-    state.sendEventToAll(
+    state.sendEventToOthers(
       DkgCommitmentEvent(name: name, participant: pid, commitment: commitment),
-      exclude: [sid],
+      sid,
     );
 
   }
@@ -505,7 +501,7 @@ class ServerApiHandler implements ApiRequestInterface {
 
     if (need.isNotEmpty) {
       // Send DkgAckRequestEvents for missing ACKs
-      state.sendEventToAll(DkgAckRequestEvent(need), exclude: [sid]);
+      state.sendEventToOthers(DkgAckRequestEvent(need), sid);
     }
 
     // Return found ACKS
@@ -572,12 +568,12 @@ class ServerApiHandler implements ApiRequestInterface {
     }
 
     // Send request event to participants
-    state.sendEventToAll(
+    state.sendEventToOthers(
       SignaturesRequestEvent(
         details: signedDetails,
         creator: session.participantId,
       ),
-      exclude: [sid],
+      sid,
     );
 
   }
@@ -803,9 +799,9 @@ class ServerApiHandler implements ApiRequestInterface {
       // Remove signature request as it is completed now
       state.sigRequests.remove(reqId);
 
-      state.sendEventToAll(
+      state.sendEventToOthers(
         SignaturesCompleteEvent(reqId: reqId, signatures: signatures),
-        exclude: [sid],
+        sid,
       );
 
       return SignaturesCompleteResponse(signatures);
@@ -832,7 +828,7 @@ class ServerApiHandler implements ApiRequestInterface {
   }
 
   @override
-  Future<void> shareSecretShare({
+  Future<List<ConstructedKeyEvent>> shareSecretShare({
     required SessionID sid,
     required cl.ECCompressedPublicKey groupKey,
     required Map<Identifier, EncryptedKeyShare> encryptedSecrets,
@@ -859,19 +855,54 @@ class ServerApiHandler implements ApiRequestInterface {
     }
 
     // Store ciphertexts
-    final stateMap = state.secretShares[groupKey] ??= KeySharingState();
+    final secrets = state.secretSharesForKey(groupKey);
 
-    // Add useable shares to state and ignore those that weren't
-    encryptedSecrets.removeWhere(
-      (id, share) => !stateMap.maybeAddShare(pid, id, share),
+    // For each entry, store shares that haven't been received and send them as
+    // events.
+    for (final MapEntry(key:id, value:share) in encryptedSecrets.entries) {
+      if (secrets.maybeAddShare(pid, id, share)) {
+        state.participantToSession[id]?.sendEvent(
+          SecretShareEvent(sender: pid, keyShare: share, groupKey: groupKey),
+        );
+      }
+    }
+
+    // Return cached ConstructedKeyEvents for unneeded secrets
+    return secrets.eventsForCompleted(encryptedSecrets.keys);
+
+  }
+
+  @override
+  Future<void> ackKeyConstructed({
+    required SessionID sid,
+    required Signed<KeyWasConstructed> constructedKey,
+  }) async {
+
+    final session = getSession(sid);
+    final pid = session.participantId;
+
+    if (!constructedKey.verify(_getParticipantPubkeyForId(pid))) {
+      throw InvalidRequest.invalidKeyConstructedSig();
+    }
+
+    // Get state for key's secret shares
+    final pubkey = constructedKey.obj.publicKey;
+    final secrets = state.secretSharesForKey(pubkey);
+
+    if (secrets.receiverShares[pid] is ParticipantDoneShareState) {
+      throw InvalidRequest.haveKeyConstructedAck();
+    }
+
+    // Set as done for participant and send event to everyone else
+    final event = ConstructedKeyEvent(
+      participant: pid,
+      constructedKey: constructedKey,
     );
 
-    // Send ciphertexts to other participants that are online
-    for (final MapEntry(key:id, value:share) in encryptedSecrets.entries) {
-      state.participantToSession[id]?.sendEvent(
-        SecretShareEvent(sender: pid, keyShare: share, groupKey: groupKey),
-      );
-    }
+    secrets.receiverShares[pid] = ParticipantDoneShareState(event);
+
+    // Send event to other participants
+    state.sendEventToOthers(event, sid);
 
   }
 

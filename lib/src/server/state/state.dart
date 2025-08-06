@@ -99,4 +99,10 @@ class ServerState {
     }
   }
 
+  void sendEventToOthers(Event e, SessionID sid)
+    => sendEventToAll(e, exclude: [sid]);
+
+  KeySharingState secretSharesForKey(cl.ECCompressedPublicKey key)
+    => secretShares[key] ??= KeySharingState();
+
 }

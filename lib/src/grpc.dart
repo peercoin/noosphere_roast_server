@@ -113,6 +113,7 @@ class FrostNoosphereService extends pb.NoosphereServiceBase {
           SignaturesCompleteEvent() => pb.EventType.SIG_COMPLETE_EVENT,
           SignaturesFailureEvent() => pb.EventType.SIG_FAILURE_EVENT,
           SecretShareEvent() => pb.EventType.SECRET_SHARE_EVENT,
+          ConstructedKeyEvent() => pb.EventType.CONSTRUCTED_KEY_EVENT,
           KeepaliveEvent() => pb.EventType.KEEPALIVE_EVENT,
         },
       ),
@@ -266,11 +267,12 @@ class FrostNoosphereService extends pb.NoosphereServiceBase {
   });
 
   @override
-  Future<pb.Empty> shareSecretShare(
+  Future<pb.RepeatedBytes> shareSecretShare(
     grpc.ServiceCall call,
     pb.SecretShare request,
-  ) => _handleEmpty(
-    () => api.shareSecretShare(
+  ) => _handleExceptions(() async {
+
+    final resp = await api.shareSecretShare(
       sid: _sid(request.sid),
       groupKey: cl.ECCompressedPublicKey(_bytes(request.groupKey)),
       encryptedSecrets: {
@@ -278,6 +280,23 @@ class FrostNoosphereService extends pb.NoosphereServiceBase {
           Identifier.fromBytes(_bytes(secret.id))
             : EncryptedKeyShare(ECCiphertext.fromBytes(_bytes(secret.share))),
       },
+    );
+
+    return pb.RepeatedBytes(data: resp.map((ev) => ev.toBytes()));
+
+  });
+
+  @override
+  Future<pb.Empty> ackKeyConstructed(
+    grpc.ServiceCall call,
+    pb.ConstructedKey request,
+  ) => _handleEmpty(
+    () => api.ackKeyConstructed(
+      sid: _sid(request.sid),
+      constructedKey: Signed<KeyWasConstructed>.fromBytes(
+        _bytes(request.constructedKey),
+        (reader) => KeyWasConstructed.fromReader(reader),
+      ),
     ),
   );
 
