@@ -145,6 +145,7 @@ void main() {
       group("given key and signatures request", () {
 
         late SignaturesRequestId reqId;
+        late cl.ECCompressedPublicKey groupKey;
 
         setUp(() async {
 
@@ -163,14 +164,16 @@ void main() {
               .expectOnlyOneEventType<UpdatedDkgClientEvent>();
           }
 
+          groupKey = cl.ECCompressedPublicKey.fromPubkey(
+            tcs.first.store.keys.keys.first,
+          );
+
           // Create signature request for 2-of-10
           final sigReq = SignaturesRequestDetails(
             requiredSigs: [
               SingleSignatureDetails(
                 signDetails: getSignDetails(0),
-                groupKey: cl.ECCompressedPublicKey.fromPubkey(
-                  tcs.first.store.keys.keys.first,
-                ),
+                groupKey: groupKey,
                 hdDerivation: [0],
               ),
             ],
@@ -203,15 +206,25 @@ void main() {
 
         });
 
+        Future<void> logoutLast() async {
+          await tcs.last.client.logout();
+          await Future.wait(
+            tcs.take(9).map((tc) => tc.expectOnlyLoginEvents()),
+          );
+        }
+
+        Future<void> reloginLast() async {
+          tcs.last = await TestClient.login(
+            getApi(), 9, storage: tcs.last.store,
+          );
+        }
+
         test(
           "can accept request and receive completed signature on login",
           () async {
 
             // Logout last to receive signature on login
-            await tcs.last.client.logout();
-            await Future.wait(
-              tcs.take(9).map((tc) => tc.expectOnlyLoginEvents()),
-            );
+            await logoutLast();
 
             // One more accepted causes success
             await tcs[1].client.acceptSignaturesRequest(reqId);
@@ -233,10 +246,7 @@ void main() {
             }
 
             // Login last and the signature should be received
-            tcs.last = await TestClient.login(
-              getApi(), 9,
-              storage: tcs.last.store,
-            );
+            await reloginLast();
             final ev = await expectSigsEv(tcs.last);
 
             // Ensure signature is valid
@@ -251,6 +261,23 @@ void main() {
 
           },
         );
+
+        test("can construct underlying key", () async {
+
+          // Logout last to receive key on login
+          await logoutLast();
+
+          // Two clients share leading to creation of key
+          await Future.wait(
+            tcs.take(2).map((tc) => tc.client.shareKeySecret(groupKey)),
+          );
+          await Future.wait(tcs.take(9).map((tc) => tc.waitForKeyConstructed()));
+
+          // Last logs in and obtains key
+          await reloginLast();
+          await tcs.last.waitForKeyConstructed();
+
+        });
 
       });
 

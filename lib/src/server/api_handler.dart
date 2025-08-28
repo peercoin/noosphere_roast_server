@@ -855,10 +855,11 @@ class ServerApiHandler implements ApiRequestInterface {
     }
 
     // Store ciphertexts
-    final secrets = state.secretSharesForKey(groupKey);
-
     // For each entry, store shares that haven't been received and send them as
     // events.
+
+    final secrets = state.secretSharesForKey(groupKey);
+
     for (final MapEntry(key:id, value:share) in encryptedSecrets.entries) {
       if (secrets.maybeAddShare(pid, id, share)) {
         state.participantToSession[id]?.sendEvent(

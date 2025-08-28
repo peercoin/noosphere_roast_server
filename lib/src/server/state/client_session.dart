@@ -36,6 +36,7 @@ class ClientSession implements Expirable {
   }
 
   void sendEvent(Event e) {
+    if (eventController.isClosed) return;
     if (eventController.isPaused) {
       // Save event in ring buffer for later
       eventBuffer.add(e);

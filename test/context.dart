@@ -85,11 +85,13 @@ class LoginRespMockApi extends ServerApiHandler {
   final List<SignaturesRequestEvent> sigRequests;
   final List<SignatureNewRoundsEvent> sigRounds;
   final List<CompletedSignaturesRequest> completedSigs;
+  final List<SecretShareEvent> secretShares;
 
   LoginRespMockApi({
     this.sigRequests = const [],
     this.sigRounds = const [],
     this.completedSigs = const [],
+    this.secretShares = const [],
   }) : super(config: serverConfig);
 
   @override
@@ -106,7 +108,7 @@ class LoginRespMockApi extends ServerApiHandler {
       sigRequests: sigRequests,
       sigRounds: sigRounds,
       completedSigs: completedSigs,
-      secretShares: upstream.secretShares,
+      secretShares: secretShares,
       events: upstream.events,
     );
   }
@@ -285,5 +287,9 @@ class TestClient {
 
   Future<void> waitForNoSigsReqs()
     => waitFor(() => client.signaturesRequests.isEmpty);
+
+  Future<void> waitForKeyConstructed() => waitFor(
+    () => store.keys.values.first.keyConstruction is KeyConstructionComplete,
+  );
 
 }

@@ -1845,5 +1845,10 @@ void main() {
 
     });
 
+    test("can shutdown with logged in clients", () async {
+      await Future.wait(List.generate(5, (i) => ctx.login(i)));
+      await ctx.api.shutdown();
+    });
+
   });
 }

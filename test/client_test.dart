@@ -17,17 +17,21 @@ import 'test_keys.dart';
 void main() {
   group("Client", () {
 
-    late final Identifier invalidId;
     late final Signed<NewDkgDetails> dkgDetails;
     late final List<DkgPart1> dummyPart1s;
     late final DkgCommitmentSet dummyCommitmentSet;
+    late final EncryptedKeyShare keyShare;
     setUpAll(() async {
       await loadFrosty();
-      invalidId = badId;
       dkgDetails = signObject(getDkgDetails());
       dummyPart1s = List.generate(10, (i) => getDkgPart1(i));
       dummyCommitmentSet = DkgCommitmentSet(
         List.generate(10, (i) => (ids[i], dummyPart1s[i].public)),
+      );
+      keyShare = EncryptedKeyShare.encrypt(
+        keyShare: getPrivkey(0),
+        recipientKey: getPrivkey(0).pubkey,
+        senderKey: getPrivkey(0),
       );
     });
 
@@ -66,7 +70,7 @@ void main() {
       List.generate(n, (i) => login(i)),
     );
 
-    void sendEventToClient(TestClient tc, Event ev) async {
+    void sendEventToClient(TestClient tc, Event ev) {
       final clientState = ctx.api.state.clientSessions.values.firstWhere(
         (state) => state.participantId == tc.client.config.id,
       );
@@ -196,7 +200,7 @@ void main() {
       test("online participant not in config", () {
         final mockSessionId = SessionID();
         ctx.api.state.clientSessions[mockSessionId] = ClientSession(
-          participantId: invalidId,
+          participantId: badId,
           sessionID: mockSessionId,
           expiry: Expiry(serverConfig.sessionTTL),
           onLostStream: () {},
@@ -205,7 +209,7 @@ void main() {
       });
 
       test("no participant for DKG creator", () {
-        ctx.addDkg(invalidId, "mock");
+        ctx.addDkg(badId, "mock");
         expectLoginMisbehaviour();
       });
 
@@ -226,7 +230,7 @@ void main() {
 
       test("invalid participant in commitments", () {
         ctx.addDkg(ids.first, "mock").round1.commitments.add(
-          (invalidId, getDkgPart1(0).public),
+          (badId, getDkgPart1(0).public),
         );
         expectLoginMisbehaviour();
       });
@@ -276,7 +280,7 @@ void main() {
 
       await expectBadEvent(
         await login(0),
-        ParticipantStatusEvent(id: invalidId, loggedIn: true),
+        ParticipantStatusEvent(id: badId, loggedIn: true),
       );
 
       // Shouldn't receive for self
@@ -866,6 +870,8 @@ void main() {
 
         ctx.api.state.sendEventToAll(sendEv);
 
+        await tc.evCollector.expectNoError();
+
         final ev = await tc.evCollector
           .getExpectOneEvent<RejectedDkgClientEvent>();
         expect(ev.participant, hasCulprit ? ids.first : null);
@@ -907,7 +913,29 @@ void main() {
       );
 
       test(
-        "handles invalid secret",
+        "handles invalid secret plaintext",
+        () => expectDkgRejectionOnEvent(
+          DkgRound2ShareEvent(
+            name: "123",
+            commitmentSetSignature: cl.SchnorrSignature.sign(
+              getPrivkey(0), commonHash,
+            ),
+            sender: ids.first,
+            secret: DkgEncryptedSecret(
+              ECCiphertext.encrypt(
+                // Ten 0 bytes is not a valid secret
+                plaintext: Uint8List(10),
+                recipientKey: getPrivkey(9).pubkey,
+                senderKey: getPrivkey(0),
+              ),
+            ),
+          ),
+          DkgFault.secretCiphertext,
+        ),
+      );
+
+      test(
+        "handles wrong secret",
         () async {
 
           // Send in bad secret
@@ -926,7 +954,8 @@ void main() {
           expect(evs, hasLength(8));
           expect(evs.any((e) => e is! UpdatedDkgClientEvent), false);
 
-          // Rejection happens on final event
+          // Rejection happens on final event because only when all secrets are
+          // obtained can failured be determined
           await expectDkgRejectionOnEvent(
             getRound2ShareEvent(commitmentSet, 8, 9, part1s[8], commonHash),
             DkgFault.secret,
@@ -1054,6 +1083,21 @@ void main() {
         await tc.expectOnlyLoginEvents();
       }
 
+      // Can replace postive and negative ACKS
+      sendEventToClient(
+        tc1,
+        DkgAckEvent({
+          getDkgAck(1, false),
+          getDkgAck(2, true),
+          getDkgAck(3, true),
+        }),
+      );
+      expAcks[1] = (1, false);
+      expAcks[2] = (2, true);
+      expAcks[3] = (3, true);
+      await waitFor(() => tc1.store.keys.values.first.acceptedAcks == 4);
+      await expectAcks(tc1, expAcks);
+
     });
 
     test("handles bad DkgAckEvent", () async {
@@ -1111,6 +1155,8 @@ void main() {
       late List<InMemoryClientStorage> stores;
       late List<TestClient> tcs;
       late SignaturesRequestId missingReqId;
+      // Valid share for 1st key and last participant
+      late EncryptedKeyShare validKeyShare;
 
       Future<TestClient> loginOne(int i) => login(i, storage: stores[i]);
 
@@ -1149,6 +1195,18 @@ void main() {
         expiry: expiry ?? futureExpiry,
       );
 
+      void expectNoSecretsInFirst() => expect(
+        stores.first.keys.values.map((key) => key.keyConstruction),
+        everyElement(
+          isA<KeyConstructionProgress>()
+          .having(
+            (construction) => construction.secrets,
+            ".secrets",
+            isEmpty,
+          ),
+        ),
+      );
+
       setUp(() async {
 
         infosForKeys = [generateNewKey(3), generateNewKey(6)];
@@ -1161,12 +1219,11 @@ void main() {
             final store = InMemoryClientStorage();
 
             for (final j in [0,1]) {
-              store.addNewFrostKey(
+              store.addOrReplaceFrostKey(
                 FrostKeyWithDetails(
                   keyInfo: infosForKeys[j][i],
                   name: j == 0 ? "3-of-10" : "6-of-10",
                   description: "",
-                  acks: {},
                 ),
               );
             }
@@ -1177,6 +1234,11 @@ void main() {
 
         reqDetails = getSigDetailsWithKeys();
         missingReqId = SignaturesRequestId.fromBytes(Uint8List(16));
+        validKeyShare = EncryptedKeyShare.encrypt(
+          keyShare: stores.last.keys.values.first.keyInfo.private.share,
+          recipientKey: getPrivkey(0).pubkey,
+          senderKey: getPrivkey(9),
+        );
 
         await loginAll();
 
@@ -1349,12 +1411,11 @@ void main() {
 
         // Give first client a key that others do not have
         final otherKey = generateNewKey(3).first;
-        await tcs.first.store.addNewFrostKey(
+        await tcs.first.store.addOrReplaceFrostKey(
           FrostKeyWithDetails(
             keyInfo: otherKey,
             name: "other key",
             description: "",
-            acks: {},
           ),
         );
 
@@ -1530,7 +1591,7 @@ void main() {
                 commitments: SigningCommitmentSet({
                   ids.first: firstCommitment,
                   ids[1]: getSignPart1().commitment,
-                  Identifier.fromUint16(11): getSignPart1().commitment,
+                  badId: getSignPart1().commitment,
                 }),
               ),
             ]) SignatureNewRoundsEvent(
@@ -1590,6 +1651,7 @@ void main() {
           final singleReq = getSigDetailsWithKeys(
             keys: groupKeys.take(1).toList(),
           );
+          final singleSignedDetails = signObject(singleReq);
 
           await tcs.first.logout();
 
@@ -1602,14 +1664,21 @@ void main() {
             ),
             // Invalid signature
             CompletedSignaturesRequest(
-              details: signObject(singleReq),
+              details: singleSignedDetails,
               signatures: [dummySig],
               creator: ids.first,
             ),
             // Incorrect number of signatures for request requiring 2
             CompletedSignaturesRequest(
+              // reqDetails requires 2, not 1
               details: signObject(reqDetails),
               signatures: [validFirstSig],
+              creator: ids.first,
+            ),
+            // Empty signatures
+            CompletedSignaturesRequest(
+              details: singleSignedDetails,
+              signatures: [],
               creator: ids.first,
             ),
           ]) {
@@ -1622,7 +1691,7 @@ void main() {
             LoginRespMockApi(
               completedSigs: [
                 CompletedSignaturesRequest(
-                  details: signObject(singleReq),
+                  details: singleSignedDetails,
                   signatures: [validFirstSig],
                   creator: ids.first,
                 ),
@@ -1918,6 +1987,290 @@ void main() {
         });
 
       });
+
+      group(".shareKeySecret", () {
+
+        test("failure", () async {
+
+          Future<void> expectFailure(
+            cl.ECCompressedPublicKey groupKey,
+            Set<Identifier> toWhom,
+          ) => expectLater(
+            () => tcs.first.client.shareKeySecret(groupKey, toWhom: toWhom),
+            throwsArgumentError,
+          );
+
+          // Group key doesn't exist
+          await expectFailure(groupPublicKey, { ids.last });
+
+          // Cannot send to self
+          await expectFailure(groupKeys.first, { ids.first, ids.last });
+
+          // Participants must exist
+          await expectFailure(
+            groupKeys.first,
+            { ids.last, badId },
+          );
+
+        });
+
+        test("sucessful sharing and construction", () async {
+
+          Future<void> doShare(int i, [ Set<int>? to ])
+            => tcs[i].client.shareKeySecret(
+              groupKeys.first,
+              toWhom: to?.map((i) => ids[i]).toSet(),
+            );
+
+          void expectCompleted(KeyConstruction construction) => expect(
+            construction,
+            isA<KeyConstructionComplete>().having(
+              (construction) => construction.privateKey.pubkey,
+              ".privateKey.pubkey",
+              groupKeys.first,
+            ),
+          );
+
+          Future<void> expectShareEvents(
+            int i,
+            Iterable<int> from,
+            bool startCompleted,
+          ) async {
+
+            final evs = await tcs[i].evCollector.getEvents();
+
+            // Discard login events
+            final shareEvs = evs
+              .where((ev) => ev is! ParticipantStatusClientEvent)
+              .cast<SecretShareClientEvent>()
+              .toList();
+
+            expect(shareEvs, hasLength(from.length));
+            expect(
+              shareEvs.map((ev) => ev.sender),
+              from.map((i) => ids[i]),
+            );
+
+            for (final ev in shareEvs) {
+
+              final construction = ev.keyDetails.keyConstruction;
+
+              if (!startCompleted) {
+                expect(
+                  construction,
+                  isA<KeyConstructionProgress>().having(
+                    (construction) => construction.secrets,
+                    ".secrets",
+                    hasLength(1),
+                  ),
+                );
+                startCompleted = true;
+              } else {
+                expectCompleted(construction);
+              }
+
+            }
+
+          }
+
+          // Logout third
+          await tcs[2].logout();
+
+          // Share secret of 1st to 2nd, 3rd
+          await doShare(0, {1,2});
+          await expectShareEvents(1, {0}, false);
+
+          // Shares secret of 2nd to 1st 3rd, 4th
+          await doShare(1, {0,2,3});
+          await expectShareEvents(0, {1}, false);
+          await expectShareEvents(3, {1}, false);
+
+          // Logout 1st
+          await tcs[0].logout();
+
+          // Relogin 3rd
+          tcs[2] = await loginOne(2);
+
+          // 3rd completes key from 1st (cached) and 2nd key
+          // As done on login, there are no events
+          expectCompleted(tcs[2].store.keys.values.first.keyConstruction);
+
+          // 4th sends to everyone
+          await doShare(3);
+
+          // Check that 4th has share times
+          expect(
+            stores[3].keys.values.first.secretShareTimes,
+            hasLength(9),
+          );
+
+          // 2nd completes key
+          await expectShareEvents(1, {3}, true);
+
+          // 5th to 10th receives first secret from 4th
+          for (int i = 4; i < 10; i++) {
+            await expectShareEvents(i, {3}, false);
+          }
+
+          // 2nd attempts to resend to 4th but it does nothing
+          // 2nd also shares to 5th that completes
+          // 4th attampts to resend but it already sent to everyone
+          await doShare(1, {3,4});
+          await doShare(3);
+          await expectShareEvents(4, {1}, true);
+          for (final tc in tcs) {
+            await tc.expectOnlyLoginEvents();
+          }
+
+          // 2nd, 3rd and 5th have completed. Ensure others have claimedToHave
+          for (final tc in tcs.skip(1)) {
+            expect(
+              tc.store.keys.values.first.claimedToHave,
+              {
+                for (final i in {1,2,4})
+                  if (ids[i] != tc.client.config.id) ids[i],
+              }
+            );
+          }
+
+          // Server close and reopen
+          await ctx.api.shutdown();
+          ctx = TestContext();
+
+          // 1st and 4th relogin and 1st receives 4th. Completes key
+          tcs[0] = await loginOne(0);
+          tcs[3] = await loginOne(3);
+          await expectShareEvents(0, {3}, true);
+
+        });
+
+        test("ignores invalid share", () async {
+
+          void sendEvent(
+            Identifier sender,
+            cl.ECCompressedPublicKey key,
+          ) => sendEventToClient(
+            tcs.first,
+            SecretShareEvent(
+              sender: sender,
+              keyShare: validKeyShare,
+              groupKey: key,
+            ),
+          );
+
+          Future<void> ignoresInvalid(
+            Identifier sender,
+            cl.ECCompressedPublicKey key,
+          ) async {
+            sendEvent(sender, key);
+            await tcs.first.evCollector.expectNoError();
+            expectNoSecretsInFirst();
+          }
+
+          // Incorrect key
+          await ignoresInvalid(ids.last, groupKeys.last);
+          // Correct key, incorrect sender
+          await ignoresInvalid(ids[1], groupKeys.first);
+
+          // Check valid works
+          sendEvent(ids.last, groupKeys.first);
+          await tcs.first.evCollector
+            .getExpectOneEvent<SecretShareClientEvent>();
+
+        });
+
+      });
+
+      test("invalid login secretShares", () async {
+
+        await tcs.first.logout();
+
+        for (final badId in [ids.first, badId]) {
+          ctx = TestContext(
+            LoginRespMockApi(
+              secretShares: [
+                SecretShareEvent(
+                  sender: badId,
+                  keyShare: keyShare,
+                  groupKey: groupPublicKey,
+                ),
+              ],
+            ),
+          );
+          await expectMisbehaviour(() => login(0, storage: stores.first));
+        }
+
+      });
+
+      test("ignore wrong secretShares on login", () async {
+
+        Future<void> loginWithEv(
+          Identifier sender, cl.ECCompressedPublicKey key,
+        ) async {
+          ctx = TestContext(
+            LoginRespMockApi(
+              secretShares: [
+                SecretShareEvent(
+                  sender: sender,
+                  keyShare: validKeyShare,
+                  groupKey: key,
+                ),
+              ],
+            ),
+          );
+          await login(0, storage: stores.first);
+        }
+
+        // Incorrect key
+        await loginWithEv(ids.last, groupKeys.last);
+        // Incorrect sender
+        await loginWithEv(ids[1], groupKeys.first);
+
+        expectNoSecretsInFirst();
+
+        // Ensure valid works
+        await loginWithEv(ids.last, groupKeys.first);
+        expect(
+          stores.first.keys.values.first.keyConstruction,
+          isA<KeyConstructionProgress>()
+          .having(
+            (construction) => construction.secrets,
+            ".secrets",
+            hasLength(1),
+          ),
+        );
+
+      });
+
+    });
+
+    test("invalid SecretShareEvent", () async {
+      for (final badId in [ids.first, badId]) {
+        await expectBadEvent(
+          await login(0),
+          SecretShareEvent(
+            sender: badId,
+            keyShare: keyShare,
+            groupKey: groupPublicKey,
+          ),
+        );
+      }
+    });
+
+    test("invalid ConstructedKeyEvent", () async {
+
+      final constructedKey = Signed<KeyWasConstructed>.sign(
+        obj: KeyWasConstructed(groupPublicKey),
+        key: getPrivkey(0),
+      );
+
+      // Reject ID that doesn't exist, own ID and OK ID but with bad signature
+      for (final id in [badId, ids.first, ids[1]]) {
+        await expectBadEvent(
+          await login(0),
+          ConstructedKeyEvent(participant: id, constructedKey: constructedKey),
+        );
+      }
 
     });
 

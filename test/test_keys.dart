@@ -33,11 +33,13 @@ SignedDkgAck getDkgAck(
 );
 
 InMemoryClientStorage storeWithKeyAndAcks(int i, Set<SignedDkgAck> acks)
-  => InMemoryClientStorage()..addNewFrostKey(
-    FrostKeyWithDetails(
-      keyInfo: ParticipantKeyInfo.fromHex(keyInfoHex[i]),
-      name: "123",
-      description: "Desc",
-      acks: acks,
+  => InMemoryClientStorage()..addOrReplaceFrostKey(
+    acks.fold(
+      FrostKeyWithDetails(
+        keyInfo: ParticipantKeyInfo.fromHex(keyInfoHex[i]),
+        name: "123",
+        description: "Desc",
+      ),
+      (details, ack) => details.addOrReplaceAck(ack),
     ),
   );
