@@ -1,0 +1,10 @@
+.dart_tool/
+.git/
+.packages
+.pub-cache/
+
+build/
+
+coverage/
+doc/api/
+*.log

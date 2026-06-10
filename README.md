@@ -8,6 +8,45 @@ A server can be run from a given `GrpcConfig` YAML file using `dart run
 noosphere_roast_server:grpc_server --config your_config_file_here.yaml`.
 Alternatively a server may be created using the package as a library.
 
+## Podman / Docker
+
+Build the image from this repository:
+
+```sh
+podman build -t noosphere-roast-server .
+```
+
+The Dockerfile builds `libfrosty_rust.so` from `peercoin/frosty` `v3.0.0`,
+matching the current `frosty` dependency. If the dependency is upgraded, pass a
+matching tag:
+
+```sh
+podman build --build-arg FROSTY_VERSION=v3.0.0 -t noosphere-roast-server .
+```
+
+Run the server with a mounted YAML configuration:
+
+```sh
+podman run --rm \
+  -p 50051:50051 \
+  -v "$PWD/config.yaml:/config/server.yaml:ro" \
+  noosphere-roast-server
+```
+
+To use a different in-container config path, pass it as the command:
+
+```sh
+podman run --rm \
+  -p 50051:50051 \
+  -v "$PWD/config.yaml:/app/config.yaml:ro" \
+  noosphere-roast-server /app/config.yaml
+```
+
+The image builds the `frosty` native library during the container build and
+copies `libfrosty_rust.so` into `/app/build`.
+
+The same commands also work with Docker by replacing `podman` with `docker`.
+
 ## Installation
 
 To use the library, the underlying [frosty](https://pub.dev/packages/frosty)
