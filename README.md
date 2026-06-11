@@ -29,16 +29,20 @@ Run the server with a mounted YAML configuration:
 ```sh
 podman run --rm \
   -p 50051:50051 \
-  -v "$PWD/config.yaml:/config/server.yaml:ro" \
+  -v "$PWD/config.yaml:/config/server.yaml:ro,Z" \
   noosphere-roast-server
 ```
+
+The `:Z` suffix relabels the mounted config file so Podman can read it on
+SELinux-enforcing hosts. Use `:z` instead if the same config file must be
+shared by multiple containers.
 
 To use a different in-container config path, pass it as the command:
 
 ```sh
 podman run --rm \
   -p 50051:50051 \
-  -v "$PWD/config.yaml:/app/config.yaml:ro" \
+  -v "$PWD/config.yaml:/app/config.yaml:ro,Z" \
   noosphere-roast-server /app/config.yaml
 ```
 
