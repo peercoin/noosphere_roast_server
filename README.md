@@ -17,11 +17,15 @@ podman build -t noosphere-roast-server .
 ```
 
 The Dockerfile builds `libfrosty_rust.so` from `peercoin/frosty` `v3.0.0`,
-matching the current `frosty` dependency. If the dependency is upgraded, pass a
-matching tag:
+matching the current `frosty` dependency, and `libsecp256k1.so` from
+`peercoin/secp256k1-coinlib` `v0.7.0`, matching the current `coinlib`
+dependency. If either dependency is upgraded, pass matching tags:
 
 ```sh
-podman build --build-arg FROSTY_VERSION=v3.0.0 -t noosphere-roast-server .
+podman build \
+  --build-arg FROSTY_VERSION=v3.0.0 \
+  --build-arg SECP256K1_COINLIB_VERSION=0.7.0 \
+  -t noosphere-roast-server .
 ```
 
 Run the server with a mounted YAML configuration:
@@ -46,8 +50,9 @@ podman run --rm \
   noosphere-roast-server /app/config.yaml
 ```
 
-The image builds the `frosty` native library during the container build and
-copies `libfrosty_rust.so` into `/app/build`.
+The image builds the `frosty` and `secp256k1-coinlib` native libraries during
+the container build and copies `libfrosty_rust.so` and `libsecp256k1.so` into
+`/app/build`.
 
 The same commands also work with Docker by replacing `podman` with `docker`.
 
