@@ -13,6 +13,8 @@ dependencies:
   collection: ^1.17.1
   grpc: ^4.0.1
   args: ^2.6.0
+  shelf: ^1.4.2
+  shelf_router: ^1.1.4
 
 dev_dependencies:
   lints: ^6.0.0
