@@ -5,7 +5,6 @@ import 'package:coinlib/coinlib.dart';
 import 'package:noosphere_roast_server/noosphere_roast_server.dart';
 
 void main(List<String> args) async {
-
   final argParser = ArgParser();
   argParser.addOption(
     "config",
@@ -13,8 +12,19 @@ void main(List<String> args) async {
     help: "The path to the GrpcConfig YAML file",
     mandatory: true,
   );
+  argParser.addOption(
+    "rest-port",
+    help: "Optional REST/SSE port for browser clients",
+  );
+  argParser.addOption(
+    "rest-allow-origin",
+    help: "CORS Access-Control-Allow-Origin value for REST/SSE clients",
+    defaultsTo: "*",
+  );
   final argResults = argParser.parse(args);
   final configFile = argResults.option("config")!;
+  final restPortString = argResults.option("rest-port");
+  final restPort = restPortString == null ? null : int.parse(restPortString);
   final configString = File(configFile).readAsStringSync();
 
   await loadFrosty();
@@ -23,11 +33,21 @@ void main(List<String> args) async {
   print("Loaded config from $configFile");
   print("Group fingerprint is ${bytesToHex(config.server.group.fingerprint)}");
 
-  final apiHandler = ServerApiHandler(config: config.server);
+  final apiHandler = SynchronizedServerApiHandler(config: config.server);
   final service = FrostNoosphereService(api: apiHandler);
   final grpcServer = service.createServer();
   await grpcServer.serve(port: config.port);
-  print("Server listening on port ${config.port}");
+  print("gRPC server listening on port ${config.port}");
+
+  HttpServer? restServer;
+  if (restPort != null) {
+    final restService = RestSseNoosphereService(
+      api: apiHandler,
+      allowOrigin: argResults.option("rest-allow-origin")!,
+    );
+    restServer = await restService.serve(port: restPort);
+    print("REST/SSE server listening on port ${restServer.port}");
+  }
 
   // Wait for SIGINT or SIGTERM to terminate server
 
@@ -47,8 +67,8 @@ void main(List<String> args) async {
   print("Caught ${signal.name}. Shutting down server.");
 
   await apiHandler.shutdown();
+  await restServer?.close(force: true);
   await grpcServer.shutdown();
 
   exit(0);
-
 }
