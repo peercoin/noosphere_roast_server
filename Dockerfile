@@ -1,4 +1,4 @@
-ARG FROSTY_VERSION=v3.0.0
+ARG FROSTY_VERSION=v4.0.0
 ARG SECP256K1_COINLIB_VERSION=0.7.0
 
 FROM docker.io/library/debian:bookworm AS secp256k1-build
