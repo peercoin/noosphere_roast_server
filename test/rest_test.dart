@@ -121,8 +121,10 @@ void main() {
 
       expect(response.statusCode, 200);
       expect(
-        Expiry.fromBytes(_dataBytes(await response.readAsString())).ttl,
-        api.expiry.ttl,
+        Expiry.fromBytes(_dataBytes(await response.readAsString()))
+            .time
+            .millisecondsSinceEpoch,
+        api.expiry.time.millisecondsSinceEpoch,
       );
     });
 

@@ -30,14 +30,16 @@ void main(List<String> args) async {
   await loadFrosty();
 
   final config = GrpcConfig.fromYaml(configString);
-  print("Loaded config from $configFile");
-  print("Group fingerprint is ${bytesToHex(config.server.group.fingerprint)}");
+  noosphereRoastServerLogger.i("Loaded config from $configFile");
+  noosphereRoastServerLogger.i(
+    "Group fingerprint is ${bytesToHex(config.server.group.fingerprint)}",
+  );
 
   final apiHandler = SynchronizedServerApiHandler(config: config.server);
   final service = FrostNoosphereService(api: apiHandler);
   final grpcServer = service.createServer();
   await grpcServer.serve(port: config.port);
-  print("gRPC server listening on port ${config.port}");
+  noosphereRoastServerLogger.i("gRPC server listening on port ${config.port}");
 
   HttpServer? restServer;
   if (restPort != null) {
@@ -46,7 +48,9 @@ void main(List<String> args) async {
       allowOrigin: argResults.option("rest-allow-origin")!,
     );
     restServer = await restService.serve(port: restPort);
-    print("REST/SSE server listening on port ${restServer.port}");
+    noosphereRoastServerLogger.i(
+      "REST/SSE server listening on port ${restServer.port}",
+    );
   }
 
   // Wait for SIGINT or SIGTERM to terminate server
@@ -56,7 +60,7 @@ void main(List<String> args) async {
   for (final signal in [ProcessSignal.sigint, ProcessSignal.sigterm]) {
     signal.watch().listen((sig) {
       if (termCompleter.isCompleted) {
-        print("Exiting immediately");
+        noosphereRoastServerLogger.w("Exiting immediately");
         exit(0);
       }
       termCompleter.complete(sig);
@@ -64,7 +68,9 @@ void main(List<String> args) async {
   }
 
   final signal = await termCompleter.future;
-  print("Caught ${signal.name}. Shutting down server.");
+  noosphereRoastServerLogger.i(
+    "Caught ${signal.name}. Shutting down server.",
+  );
 
   await apiHandler.shutdown();
   await restServer?.close(force: true);

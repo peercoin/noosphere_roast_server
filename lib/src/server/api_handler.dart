@@ -5,6 +5,7 @@ import 'package:collection/collection.dart';
 import 'package:coinlib/coinlib.dart' as cl;
 import 'package:noosphere_roast_client/noosphere_roast_client.dart';
 import 'package:noosphere_roast_server/src/config/server.dart';
+import 'package:noosphere_roast_server/src/logging.dart';
 import 'package:noosphere_roast_server/src/server/state/key_sharing.dart';
 import 'state/signatures_coordination.dart';
 import 'state/client_session.dart';
@@ -18,7 +19,6 @@ import 'state/state.dart';
 ///
 /// The methods should be called sequentially without concurrency.
 class ServerApiHandler implements ApiRequestInterface {
-
   static const currentProtocolVersion = 2;
 
   final ServerConfig config;
@@ -46,8 +46,8 @@ class ServerApiHandler implements ApiRequestInterface {
     return pubkey;
   }
 
-  cl.ECPublicKey _getParticipantPubkeyForSession(ClientSession session)
-    => _getParticipantPubkeyForId(session.participantId);
+  cl.ECPublicKey _getParticipantPubkeyForSession(ClientSession session) =>
+      _getParticipantPubkeyForId(session.participantId);
 
   void _checkParticipantId(Identifier id) => _getParticipantPubkeyForId(id);
 
@@ -68,7 +68,6 @@ class ServerApiHandler implements ApiRequestInterface {
     required Identifier participantId,
     int protocolVersion = currentProtocolVersion,
   }) async {
-
     // Only allow version 1
     if (protocolVersion != currentProtocolVersion) {
       throw InvalidRequest.invalidProtoVersion();
@@ -90,15 +89,17 @@ class ServerApiHandler implements ApiRequestInterface {
       expiry: expiry,
     );
 
-    return ExpirableAuthChallengeResponse(challenge: challenge, expiry: expiry);
+    noosphereRoastServerLogger.i(
+      "Issued auth challenge for participant $participantId",
+    );
 
+    return ExpirableAuthChallengeResponse(challenge: challenge, expiry: expiry);
   }
 
   @override
   Future<LoginCompleteResponse> respondToChallenge(
     Signed<AuthChallenge> signedChallenge,
   ) async {
-
     // Get participant id for challenge and check expiry
     final details = state.challenges[signedChallenge.obj];
     if (details == null) throw InvalidRequest.noChallenge();
@@ -123,9 +124,11 @@ class ServerApiHandler implements ApiRequestInterface {
     }
 
     // Obtain other logged in participants
-    final online = state.clientSessions.values.map(
-      (sess) => sess.participantId,
-    ).toSet();
+    final online = state.clientSessions.values
+        .map(
+          (sess) => sess.participantId,
+        )
+        .toSet();
 
     // Notify other sessions of login before new session is added
     state.sendEventToAll(ParticipantStatusEvent(id: pid, loggedIn: true));
@@ -134,23 +137,21 @@ class ServerApiHandler implements ApiRequestInterface {
     final sessionId = SessionID();
     final expiry = Expiry(config.sessionTTL);
 
-    final session
-      = state.participantToSession[pid]
-      = state.clientSessions[sessionId]
-      = ClientSession(
-        participantId: pid,
-        sessionID: sessionId,
-        expiry: expiry,
-        // When the session stream is lost, remove the session and process the
-        // logout immediately
-        onLostStream: () {
-          final sess = state.clientSessions.remove(sessionId);
-          if (sess != null) {
-            state.participantToSession.remove(pid);
-            state.onEndSession(sess);
-          }
-        },
-      );
+    final session = state.participantToSession[pid] =
+        state.clientSessions[sessionId] = ClientSession(
+      participantId: pid,
+      sessionID: sessionId,
+      expiry: expiry,
+      // When the session stream is lost, remove the session and process the
+      // logout immediately
+      onLostStream: () {
+        final sess = state.clientSessions.remove(sessionId);
+        if (sess != null) {
+          state.participantToSession.remove(pid);
+          state.onEndSession(sess);
+        }
+      },
+    );
 
     // If using keepalive, send periodic events
     if (config.keepAliveFreq != null) {
@@ -161,61 +162,68 @@ class ServerApiHandler implements ApiRequestInterface {
       });
     }
 
-    return LoginCompleteResponse(
+    noosphereRoastServerLogger.i("Participant logged in: $pid");
 
+    return LoginCompleteResponse(
       id: sessionId,
       expiry: expiry,
       startTime: startTime,
       onlineParticipants: online,
       events: session.eventController.stream,
 
-      newDkgs: state.round1Dkgs.map(
-        (dkg) => NewDkgEvent(
-          details: dkg.details,
-          creator: dkg.creator,
-          commitments: dkg.round1.commitments,
-        ),
-      ).toList(),
+      newDkgs: state.round1Dkgs
+          .map(
+            (dkg) => NewDkgEvent(
+              details: dkg.details,
+              creator: dkg.creator,
+              commitments: dkg.round1.commitments,
+            ),
+          )
+          .toList(),
 
-      sigRequests: state.sigRequests.values.map(
-        (sig) => SignaturesRequestEvent(
-          details: sig.details, creator: sig.creator,
-        ),
-      ).toList(),
+      sigRequests: state.sigRequests.values
+          .map(
+            (sig) => SignaturesRequestEvent(
+              details: sig.details,
+              creator: sig.creator,
+            ),
+          )
+          .toList(),
 
       // Find rounds that the user is part of and hasn't provided a share yet
-      sigRounds: state.sigRequests.values.map(
-        (sigReq) => SignatureNewRoundsEvent(
-          reqId: sigReq.details.obj.id,
-          rounds: sigReq.pendingRoundsForId(pid),
-        ),
-      ).where((newRounds) => newRounds.rounds.isNotEmpty).toList(),
+      sigRounds: state.sigRequests.values
+          .map(
+            (sigReq) => SignatureNewRoundsEvent(
+              reqId: sigReq.details.obj.id,
+              rounds: sigReq.pendingRoundsForId(pid),
+            ),
+          )
+          .where((newRounds) => newRounds.rounds.isNotEmpty)
+          .toList(),
 
       completedSigs: state.completedSigs.values
-      .where((sigs) => !sigs.acks.contains(pid))
-      .map(
-        (sigs) => CompletedSignaturesRequest(
-          details: sigs.details,
-          signatures: sigs.signatures,
-          creator: sigs.creator,
-        ),
-      ).toList(),
+          .where((sigs) => !sigs.acks.contains(pid))
+          .map(
+            (sigs) => CompletedSignaturesRequest(
+              details: sigs.details,
+              signatures: sigs.signatures,
+              creator: sigs.creator,
+            ),
+          )
+          .toList(),
 
       secretShares: [
-        for (
-          final MapEntry(key: groupKey, value: sharingState)
-          in state.secretShares.entries
-        ) ...sharingState.getSharesForReceiver(pid).map(
-          (share) => SecretShareEvent(
-            sender: share.sender,
-            keyShare: share.share,
-            groupKey: groupKey,
-          ),
-        ),
+        for (final MapEntry(key: groupKey, value: sharingState)
+            in state.secretShares.entries)
+          ...sharingState.getSharesForReceiver(pid).map(
+                (share) => SecretShareEvent(
+                  sender: share.sender,
+                  keyShare: share.share,
+                  groupKey: groupKey,
+                ),
+              ),
       ],
-
     );
-
   }
 
   @override
@@ -230,7 +238,6 @@ class ServerApiHandler implements ApiRequestInterface {
     required Signed<NewDkgDetails> signedDetails,
     required DkgPublicCommitment commitment,
   }) async {
-
     final session = getSession(sid);
     final details = signedDetails.obj;
 
@@ -241,7 +248,9 @@ class ServerApiHandler implements ApiRequestInterface {
 
     // Check expiry is within bounds
     _verifyExpiry(
-      details.expiry, config.minDkgRequestTTL, config.maxDkgRequestTTL,
+      details.expiry,
+      config.minDkgRequestTTL,
+      config.maxDkgRequestTTL,
     );
 
     // Check if name exists in DKG requests already
@@ -269,15 +278,23 @@ class ServerApiHandler implements ApiRequestInterface {
       commitments: commitments,
     );
 
+    noosphereRoastServerLogger.i(
+      "DKG requested: name=${details.name} creator=${session.participantId} "
+      "threshold=${details.threshold}",
+    );
+
     // Broadcast to other participants
     state.sendEventToOthers(dkgEvent, sid);
-
   }
 
   @override
   Future<void> rejectDkg({required SessionID sid, required String name}) async {
     final participantId = getSession(sid).participantId;
     if (state.nameToDkg.remove(name) != null) {
+      noosphereRoastServerLogger.i(
+        "DKG rejected: name=$name participant=$participantId",
+      );
+
       // Send an event to all other participants that the DKG was removed
       state.sendEventToOthers(
         DkgRejectEvent(name: name, participant: participantId),
@@ -292,7 +309,6 @@ class ServerApiHandler implements ApiRequestInterface {
     required String name,
     required DkgPublicCommitment commitment,
   }) async {
-
     final session = getSession(sid);
     final pid = session.participantId;
 
@@ -313,6 +329,9 @@ class ServerApiHandler implements ApiRequestInterface {
       dkg.round = DkgRound2State(
         expectedHash: dkg.details.obj.hashWithCommitments(commitmentSet),
       );
+      noosphereRoastServerLogger.i(
+        "DKG advanced to round 2: name=$name commitments=${commitments.length}",
+      );
     }
 
     // Send commitment to other participants
@@ -320,7 +339,6 @@ class ServerApiHandler implements ApiRequestInterface {
       DkgCommitmentEvent(name: name, participant: pid, commitment: commitment),
       sid,
     );
-
   }
 
   @override
@@ -330,19 +348,16 @@ class ServerApiHandler implements ApiRequestInterface {
     required cl.SchnorrSignature commitmentSetSignature,
     required Map<Identifier, DkgEncryptedSecret> secrets,
   }) async {
-
     final session = getSession(sid);
     final dkg = _getDkg(name);
     if (dkg.round is! DkgRound2State) throw InvalidRequest.notRound2Dkg();
     final round = dkg.round2;
 
     // Verify signature
-    if (
-      !commitmentSetSignature.verify(
-        _getParticipantPubkeyForSession(session),
-        round.expectedHash,
-      )
-    ) {
+    if (!commitmentSetSignature.verify(
+      _getParticipantPubkeyForSession(session),
+      round.expectedHash,
+    )) {
       throw InvalidRequest.invalidDkgCommitmentSetSignature();
     }
 
@@ -358,7 +373,6 @@ class ServerApiHandler implements ApiRequestInterface {
     // Send the signature and secrets to other participants
     for (final otherSess in state.clientSessions.values) {
       if (otherSess.sessionID != sid) {
-
         final secret = secrets[otherSess.participantId];
         if (secret == null) throw InvalidRequest.invalidSecretMap();
 
@@ -370,7 +384,6 @@ class ServerApiHandler implements ApiRequestInterface {
             secret: secret,
           ),
         );
-
       }
     }
 
@@ -378,13 +391,13 @@ class ServerApiHandler implements ApiRequestInterface {
     if (round.participantsProvided.length == _participantN - 1) {
       // Remove DKG
       state.nameToDkg.remove(name);
+      noosphereRoastServerLogger.i("DKG completed: name=$name");
       // No details of the key are stored on the server as only the participants
       // can generate the public information at this point.
     } else {
       // Record that the participant has provided round 2
       round.participantsProvided.add(session.participantId);
     }
-
   }
 
   @override
@@ -392,24 +405,20 @@ class ServerApiHandler implements ApiRequestInterface {
     required SessionID sid,
     required Set<SignedDkgAck> acks,
   }) async {
-
     getSession(sid);
 
     // Verify signatures
-    if (
-      acks.any(
-        (ack) => !ack.signed.verify(_getParticipantPubkeyForId(ack.signer)),
-      )
-    ) {
+    if (acks.any(
+      (ack) => !ack.signed.verify(_getParticipantPubkeyForId(ack.signer)),
+    )) {
       throw InvalidRequest.invalidDkgAckSignature();
     }
 
     final Set<SignedDkgAck> newAcks = {};
 
     for (final ack in acks) {
-
-      final ackCache = state.dkgAckCache[ack.signed.obj.groupKey]
-        ??= DkgAckCache(Expiry(config.ackCacheTTL));
+      final ackCache = state.dkgAckCache[ack.signed.obj.groupKey] ??=
+          DkgAckCache(Expiry(config.ackCacheTTL));
 
       // If ACK already exists in cache, override if changing from false to true
       // Otherwise do nothing and continue
@@ -423,25 +432,26 @@ class ServerApiHandler implements ApiRequestInterface {
 
       // Record as new ACK to send
       newAcks.add(ack);
-
     }
 
     // Do not send events if there are no new ACKs
     if (newAcks.isEmpty) return;
 
+    noosphereRoastServerLogger
+        .i("DKG acknowledgements received: ${newAcks.length}");
+
     // Send ACKs to participants, ensuring that their own ACKs aren't sent
     // Do not send to calling participant
-    for (
-      final session in state.clientSessions.values.where(
-        (s) => s.sessionID != sid,
-      )
-    ) {
-      final toSend = newAcks.where(
-        (ack) => ack.signer != session.participantId,
-      ).toSet();
+    for (final session in state.clientSessions.values.where(
+      (s) => s.sessionID != sid,
+    )) {
+      final toSend = newAcks
+          .where(
+            (ack) => ack.signer != session.participantId,
+          )
+          .toSet();
       if (toSend.isNotEmpty) session.sendEvent(DkgAckEvent(toSend));
     }
-
   }
 
   @override
@@ -449,7 +459,6 @@ class ServerApiHandler implements ApiRequestInterface {
     required SessionID sid,
     required Set<DkgAckRequest> requests,
   }) async {
-
     final session = getSession(sid);
 
     // Ensure all ids exist
@@ -467,7 +476,6 @@ class ServerApiHandler implements ApiRequestInterface {
     final Set<DkgAckRequest> need = {};
 
     for (final request in requests) {
-
       // Get cache for this key
       final cache = state.dkgAckCache[request.groupPublicKey];
 
@@ -492,21 +500,24 @@ class ServerApiHandler implements ApiRequestInterface {
       if (idsToReq.isNotEmpty) {
         need.add(
           DkgAckRequest(
-            ids: idsToReq, groupPublicKey: request.groupPublicKey,
+            ids: idsToReq,
+            groupPublicKey: request.groupPublicKey,
           ),
         );
       }
-
     }
 
     if (need.isNotEmpty) {
+      noosphereRoastServerLogger.d(
+        "Requested missing DKG acknowledgements: ${need.length}",
+      );
+
       // Send DkgAckRequestEvents for missing ACKs
       state.sendEventToOthers(DkgAckRequestEvent(need), sid);
     }
 
     // Return found ACKS
     return have;
-
   }
 
   @override
@@ -516,7 +527,6 @@ class ServerApiHandler implements ApiRequestInterface {
     required Signed<SignaturesRequestDetails> signedDetails,
     required List<SigningCommitment> commitments,
   }) async {
-
     final session = getSession(sid);
     final details = signedDetails.obj;
     final pid = session.participantId;
@@ -528,12 +538,10 @@ class ServerApiHandler implements ApiRequestInterface {
     }
 
     // Require all keys for requested signatures and no more
-    if (
-      !SetEquality<cl.ECCompressedPublicKey>().equals(
-        keys.map((info) => info.groupKey).toSet(),
-        details.requiredSigs.map((sig) => sig.groupKey).toSet(),
-      )
-    ) {
+    if (!SetEquality<cl.ECCompressedPublicKey>().equals(
+      keys.map((info) => info.groupKey).toSet(),
+      details.requiredSigs.map((sig) => sig.groupKey).toSet(),
+    )) {
       throw InvalidRequest.wrongSigKeys();
     }
 
@@ -555,7 +563,8 @@ class ServerApiHandler implements ApiRequestInterface {
     }
 
     // Create state for request
-    final reqState = state.sigRequests[details.id] = SignaturesCoordinationState(
+    final reqState =
+        state.sigRequests[details.id] = SignaturesCoordinationState(
       details: signedDetails,
       creator: pid,
       keys: keys,
@@ -564,7 +573,7 @@ class ServerApiHandler implements ApiRequestInterface {
     // Add commitments from creator
     for (int i = 0; i < numSigs; i++) {
       (reqState.sigs[i] as SingleSignatureInProgressState)
-        .nextCommitments[pid] = commitments[i];
+          .nextCommitments[pid] = commitments[i];
     }
 
     // Send request event to participants
@@ -576,26 +585,31 @@ class ServerApiHandler implements ApiRequestInterface {
       sid,
     );
 
+    noosphereRoastServerLogger.i(
+      "Signatures requested: id=${details.id.toHex()} creator=$pid "
+      "signatures=$numSigs",
+    );
   }
 
   void _checkSigReqFail(SignaturesCoordinationState sigReqState) {
-
-    final malAndRej
-      = sigReqState.malicious.length + sigReqState.rejectors.length;
+    final malAndRej =
+        sigReqState.malicious.length + sigReqState.rejectors.length;
     final available = _participantN - malAndRej;
 
-    final maxThreshold
-      = sigReqState.sigs
-      .whereType<SingleSignatureInProgressState>()
-      .fold(0, (v, e) => max(v, e.key.group.threshold));
+    final maxThreshold = sigReqState.sigs
+        .whereType<SingleSignatureInProgressState>()
+        .fold(0, (v, e) => max(v, e.key.group.threshold));
 
     if (available < maxThreshold) {
       // Cannot sign one of the signatures as threshold is too high
       final id = sigReqState.details.obj.id;
+      noosphereRoastServerLogger.w(
+        "Signatures request failed: id=${id.toHex()} available=$available "
+        "required=$maxThreshold",
+      );
       state.sendEventToAll(SignaturesFailureEvent(id));
       state.sigRequests.remove(id);
     }
-
   }
 
   @override
@@ -603,7 +617,6 @@ class ServerApiHandler implements ApiRequestInterface {
     required SessionID sid,
     required SignaturesRequestId reqId,
   }) async {
-
     final pid = getSession(sid).participantId;
 
     final sigReq = state.sigRequests[reqId];
@@ -615,8 +628,10 @@ class ServerApiHandler implements ApiRequestInterface {
     if (sigReq.malicious.contains(pid)) return;
 
     sigReq.rejectors.add(pid);
+    noosphereRoastServerLogger.i(
+      "Signatures request rejected: id=${reqId.toHex()} participant=$pid",
+    );
     _checkSigReqFail(sigReq);
-
   }
 
   @override
@@ -625,7 +640,6 @@ class ServerApiHandler implements ApiRequestInterface {
     required SignaturesRequestId reqId,
     required List<SignatureReply> replies,
   }) async {
-
     final pid = getSession(sid).participantId;
 
     final sigReq = state.sigRequests[reqId];
@@ -636,6 +650,10 @@ class ServerApiHandler implements ApiRequestInterface {
 
     void throwMalicious(InvalidRequest exp) {
       sigReq.malicious.add(pid);
+      noosphereRoastServerLogger.w(
+        "Participant marked malicious for signatures request: "
+        "id=${reqId.toHex()} participant=$pid reason=${exp.message}",
+      );
       _checkSigReqFail(sigReq);
       throw exp;
     }
@@ -661,7 +679,6 @@ class ServerApiHandler implements ApiRequestInterface {
 
     // Loop through provided replies and process for each signature
     for (final reply in replies) {
-
       final sigI = reply.sigI;
 
       if (sigI >= sigDetails.requiredSigs.length) {
@@ -702,17 +719,16 @@ class ServerApiHandler implements ApiRequestInterface {
         );
 
         // ShareVal: validation of provided signature share
-        if (
-          !verifySignatureShare(
-            commitments: round.commitments,
-            details: singleSigDetails.signDetails,
-            id: pid,
-            share: share,
-            publicShare: derivedKey.publicShares.list
-              .firstWhere((share) => share.$1 == pid).$2,
-            groupKey: derivedKey.groupKey,
-          )
-        ) {
+        if (!verifySignatureShare(
+          commitments: round.commitments,
+          details: singleSigDetails.signDetails,
+          id: pid,
+          share: share,
+          publicShare: derivedKey.publicShares.list
+              .firstWhere((share) => share.$1 == pid)
+              .$2,
+          groupKey: derivedKey.groupKey,
+        )) {
           throwMalicious(InvalidRequest.invalidShare());
         }
 
@@ -722,7 +738,6 @@ class ServerApiHandler implements ApiRequestInterface {
         // If all shares have been received, aggregate and complete this
         // signature
         if (round.shares.length == threshold) {
-
           final signature = SignatureAggregation(
             commitments: round.commitments,
             details: singleSigDetails.signDetails,
@@ -730,23 +745,18 @@ class ServerApiHandler implements ApiRequestInterface {
             info: derivedKey,
           ).signature;
 
-          sigState
-            = sigReq.sigs[sigI]
-            = SingleSignatureFinishedState(signature);
-
+          sigState =
+              sigReq.sigs[sigI] = SingleSignatureFinishedState(signature);
         }
-
       }
 
       // Add next commitment if not already finished
       if (sigState is SingleSignatureInProgressState) {
-
         final commitments = sigState.nextCommitments;
         commitments[pid] = reply.nextCommitment;
 
         // If we have enough commitments, create new round
         if (commitments.length == threshold) {
-
           final commitmentSet = SigningCommitmentSet(commitments);
           final round = SignatureRoundState(commitmentSet);
 
@@ -767,25 +777,22 @@ class ServerApiHandler implements ApiRequestInterface {
 
           // Clear next commitments to collect for next round
           sigState.nextCommitments.clear();
-
         }
-
       }
-
     }
 
     // If all signatures have been completed, submit event and respond with them
     if (sigReq.sigs.every((sig) => sig is SingleSignatureFinishedState)) {
-
       final signatures = sigReq.sigs
-        .cast<SingleSignatureFinishedState>()
-        .map((sig) => sig.signature).toList();
+          .cast<SingleSignatureFinishedState>()
+          .map((sig) => sig.signature)
+          .toList();
 
       // The expiry of the completed signatures should be at least the minimum
-      final completedExpiry
-        = sigReq.expiry.ttl < config.minCompletedSignaturesTTL
-        ? Expiry(config.minCompletedSignaturesTTL)
-        : sigReq.expiry;
+      final completedExpiry =
+          sigReq.expiry.ttl < config.minCompletedSignaturesTTL
+              ? Expiry(config.minCompletedSignaturesTTL)
+              : sigReq.expiry;
 
       // Store signatures to share with other participants when they are online
       // and wait to receive enough ACKs before deleting from server.
@@ -804,13 +811,21 @@ class ServerApiHandler implements ApiRequestInterface {
         sid,
       );
 
-      return SignaturesCompleteResponse(signatures);
+      noosphereRoastServerLogger.i(
+        "Signatures request completed: id=${reqId.toHex()} "
+        "signatures=${signatures.length}",
+      );
 
+      return SignaturesCompleteResponse(signatures);
     }
 
     // If there are any new rounds, return them and send events to round
     // participants
     if (newRounds.isNotEmpty) {
+      noosphereRoastServerLogger.d(
+        "Signature rounds started: id=${reqId.toHex()} "
+        "participants=${newRounds.length}",
+      );
 
       for (final id in newRounds.keys.where((id) => id != pid)) {
         state.participantToSession[id]?.sendEvent(
@@ -819,12 +834,10 @@ class ServerApiHandler implements ApiRequestInterface {
       }
 
       return SignatureNewRoundsResponse(newRounds[pid]!);
-
     }
 
     // Nothing to provide otherwise
     return null;
-
   }
 
   @override
@@ -833,7 +846,6 @@ class ServerApiHandler implements ApiRequestInterface {
     required cl.ECCompressedPublicKey groupKey,
     required Map<Identifier, EncryptedKeyShare> encryptedSecrets,
   }) async {
-
     final session = getSession(sid);
     final pid = session.participantId;
 
@@ -846,11 +858,9 @@ class ServerApiHandler implements ApiRequestInterface {
     }
 
     // Must contain identifiers in group
-    if (
-      encryptedSecrets.keys.any(
-        (id) => !config.group.participants.containsKey(id),
-      )
-    ) {
+    if (encryptedSecrets.keys.any(
+      (id) => !config.group.participants.containsKey(id),
+    )) {
       throw InvalidRequest.invalidKeyShareMap();
     }
 
@@ -859,18 +869,24 @@ class ServerApiHandler implements ApiRequestInterface {
     // events.
 
     final secrets = state.secretSharesForKey(groupKey);
+    var addedShares = 0;
 
-    for (final MapEntry(key:id, value:share) in encryptedSecrets.entries) {
+    for (final MapEntry(key: id, value: share) in encryptedSecrets.entries) {
       if (secrets.maybeAddShare(pid, id, share)) {
+        addedShares++;
         state.participantToSession[id]?.sendEvent(
           SecretShareEvent(sender: pid, keyShare: share, groupKey: groupKey),
         );
       }
     }
 
+    noosphereRoastServerLogger.i(
+      "Secret shares received: sender=$pid receivers=${encryptedSecrets.length} "
+      "new=$addedShares",
+    );
+
     // Return cached ConstructedKeyEvents for unneeded secrets
     return secrets.eventsForCompleted(encryptedSecrets.keys);
-
   }
 
   @override
@@ -878,7 +894,6 @@ class ServerApiHandler implements ApiRequestInterface {
     required SessionID sid,
     required Signed<KeyWasConstructed> constructedKey,
   }) async {
-
     final session = getSession(sid);
     final pid = session.participantId;
 
@@ -905,13 +920,20 @@ class ServerApiHandler implements ApiRequestInterface {
     // Send event to other participants
     state.sendEventToOthers(event, sid);
 
+    noosphereRoastServerLogger.i(
+      "Constructed key acknowledged: participant=$pid",
+    );
   }
 
   /// Closes all client session streams
-  Future<void> shutdown() => Future.wait(
-    state.clientSessions.values.map(
-      (session) => session.eventController.close(),
-    ),
-  );
-
+  Future<void> shutdown() {
+    noosphereRoastServerLogger.i(
+      "Shutting down API handler: sessions=${state.clientSessions.values.length}",
+    );
+    return Future.wait(
+      state.clientSessions.values.map(
+        (session) => session.eventController.close(),
+      ),
+    );
+  }
 }

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:coinlib/coinlib.dart' as cl;
 import 'package:noosphere_roast_client/noosphere_roast_client.dart';
+import 'package:noosphere_roast_server/src/logging.dart';
 import 'package:noosphere_roast_server/src/server/api_handler.dart';
 import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as shelf_io;
@@ -84,7 +85,7 @@ class RestSseNoosphereService {
   }) =>
       shelf_io.serve(handler, address, port);
 
-  Future<Response> _login(Request request) => _handleJson(() async {
+  Future<Response> _login(Request request) => _handleJson(request, () async {
         final json = await _readJson(request);
         final resp = await api.login(
           groupFingerprint: _fieldBytes(json, 'groupFingerprint'),
@@ -97,6 +98,7 @@ class RestSseNoosphereService {
       });
 
   Future<Response> _respondToChallenge(Request request) => _handleJson(
+        request,
         () async {
           final json = await _readJson(request);
           final resp = await api.respondToChallenge(
@@ -109,13 +111,15 @@ class RestSseNoosphereService {
         },
       );
 
-  Future<Response> _extendSession(Request request) => _handleJson(() async {
+  Future<Response> _extendSession(Request request) =>
+      _handleJson(request, () async {
         final json = await _readJson(request);
         final resp = await api.extendSession(_sid(_fieldBytes(json, 'sid')));
         return _bytesResponse(resp.toBytes());
       });
 
-  Future<Response> _requestNewDkg(Request request) => _handleEmpty(() async {
+  Future<Response> _requestNewDkg(Request request) =>
+      _handleEmpty(request, () async {
         final json = await _readJson(request);
         await api.requestNewDkg(
           sid: _sid(_fieldBytes(json, 'sid')),
@@ -129,7 +133,8 @@ class RestSseNoosphereService {
         );
       });
 
-  Future<Response> _rejectDkg(Request request) => _handleEmpty(() async {
+  Future<Response> _rejectDkg(Request request) =>
+      _handleEmpty(request, () async {
         final json = await _readJson(request);
         await api.rejectDkg(
           sid: _sid(_fieldBytes(json, 'sid')),
@@ -138,7 +143,7 @@ class RestSseNoosphereService {
       });
 
   Future<Response> _submitDkgCommitment(Request request) =>
-      _handleEmpty(() async {
+      _handleEmpty(request, () async {
         final json = await _readJson(request);
         await api.submitDkgCommitment(
           sid: _sid(_fieldBytes(json, 'sid')),
@@ -149,7 +154,8 @@ class RestSseNoosphereService {
         );
       });
 
-  Future<Response> _submitDkgRound2(Request request) => _handleEmpty(() async {
+  Future<Response> _submitDkgRound2(Request request) =>
+      _handleEmpty(request, () async {
         final json = await _readJson(request);
         await api.submitDkgRound2(
           sid: _sid(_fieldBytes(json, 'sid')),
@@ -167,7 +173,8 @@ class RestSseNoosphereService {
         );
       });
 
-  Future<Response> _sendDkgAcks(Request request) => _handleEmpty(() async {
+  Future<Response> _sendDkgAcks(Request request) =>
+      _handleEmpty(request, () async {
         final json = await _readJson(request);
         await api.sendDkgAcks(
           sid: _sid(_fieldBytes(json, 'sid')),
@@ -177,7 +184,8 @@ class RestSseNoosphereService {
         );
       });
 
-  Future<Response> _requestDkgAcks(Request request) => _handleJson(() async {
+  Future<Response> _requestDkgAcks(Request request) =>
+      _handleJson(request, () async {
         final json = await _readJson(request);
         final resp = await api.requestDkgAcks(
           sid: _sid(_fieldBytes(json, 'sid')),
@@ -189,7 +197,7 @@ class RestSseNoosphereService {
       });
 
   Future<Response> _requestSignatures(Request request) =>
-      _handleEmpty(() async {
+      _handleEmpty(request, () async {
         final json = await _readJson(request);
         await api.requestSignatures(
           sid: _sid(_fieldBytes(json, 'sid')),
@@ -211,7 +219,7 @@ class RestSseNoosphereService {
       });
 
   Future<Response> _rejectSignaturesRequest(Request request) =>
-      _handleEmpty(() async {
+      _handleEmpty(request, () async {
         final json = await _readJson(request);
         await api.rejectSignaturesRequest(
           sid: _sid(_fieldBytes(json, 'sid')),
@@ -220,7 +228,7 @@ class RestSseNoosphereService {
       });
 
   Future<Response> _submitSignatureReplies(Request request) =>
-      _handleJson(() async {
+      _handleJson(request, () async {
         final json = await _readJson(request);
         final resp = await api.submitSignatureReplies(
           sid: _sid(_fieldBytes(json, 'sid')),
@@ -240,7 +248,8 @@ class RestSseNoosphereService {
         });
       });
 
-  Future<Response> _shareSecretShare(Request request) => _handleJson(() async {
+  Future<Response> _shareSecretShare(Request request) =>
+      _handleJson(request, () async {
         final json = await _readJson(request);
         final resp = await api.shareSecretShare(
           sid: _sid(_fieldBytes(json, 'sid')),
@@ -257,7 +266,7 @@ class RestSseNoosphereService {
       });
 
   Future<Response> _ackKeyConstructed(Request request) =>
-      _handleEmpty(() async {
+      _handleEmpty(request, () async {
         final json = await _readJson(request);
         await api.ackKeyConstructed(
           sid: _sid(_fieldBytes(json, 'sid')),
@@ -280,38 +289,82 @@ class RestSseNoosphereService {
         },
       );
     } on InvalidRequest catch (e) {
+      noosphereRoastServerLogger.w(
+        "REST ${_requestDescription(request)} rejected: ${e.message}",
+      );
       return _jsonResponse({'error': e.message}, status: 400);
     } on FormatException catch (e) {
+      noosphereRoastServerLogger.w(
+        "REST ${_requestDescription(request)} rejected: ${e.message}",
+      );
       return _jsonResponse({'error': e.message}, status: 400);
-    } on Exception {
+    } on Exception catch (e, stackTrace) {
+      noosphereRoastServerLogger.e(
+        "REST ${_requestDescription(request)} failed",
+        error: e,
+        stackTrace: stackTrace,
+      );
       return _jsonResponse({'error': 'Internal server error'}, status: 500);
     }
   }
 }
 
-Future<Response> _handleEmpty(Future<void> Function() action) async {
+Future<Response> _handleEmpty(
+  Request request,
+  Future<void> Function() action,
+) async {
   try {
     await action();
     return _jsonResponse({});
   } on InvalidRequest catch (e) {
+    noosphereRoastServerLogger.w(
+      "REST ${_requestDescription(request)} rejected: ${e.message}",
+    );
     return _jsonResponse({'error': e.message}, status: 400);
   } on FormatException catch (e) {
+    noosphereRoastServerLogger.w(
+      "REST ${_requestDescription(request)} rejected: ${e.message}",
+    );
     return _jsonResponse({'error': e.message}, status: 400);
-  } on Exception {
+  } on Exception catch (e, stackTrace) {
+    noosphereRoastServerLogger.e(
+      "REST ${_requestDescription(request)} failed",
+      error: e,
+      stackTrace: stackTrace,
+    );
     return _jsonResponse({'error': 'Internal server error'}, status: 500);
   }
 }
 
-Future<Response> _handleJson(Future<Response> Function() action) async {
+Future<Response> _handleJson(
+  Request request,
+  Future<Response> Function() action,
+) async {
   try {
     return await action();
   } on InvalidRequest catch (e) {
+    noosphereRoastServerLogger.w(
+      "REST ${_requestDescription(request)} rejected: ${e.message}",
+    );
     return _jsonResponse({'error': e.message}, status: 400);
   } on FormatException catch (e) {
+    noosphereRoastServerLogger.w(
+      "REST ${_requestDescription(request)} rejected: ${e.message}",
+    );
     return _jsonResponse({'error': e.message}, status: 400);
-  } on Exception {
+  } on Exception catch (e, stackTrace) {
+    noosphereRoastServerLogger.e(
+      "REST ${_requestDescription(request)} failed",
+      error: e,
+      stackTrace: stackTrace,
+    );
     return _jsonResponse({'error': 'Internal server error'}, status: 500);
   }
+}
+
+String _requestDescription(Request request) {
+  final path = request.url.path.isEmpty ? '/' : '/${request.url.path}';
+  return '${request.method} $path';
 }
 
 Future<Map<String, dynamic>> _readJson(Request request) async {
