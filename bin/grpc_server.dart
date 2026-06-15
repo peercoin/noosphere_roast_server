@@ -4,6 +4,16 @@ import 'package:args/args.dart';
 import 'package:coinlib/coinlib.dart';
 import 'package:noosphere_roast_server/noosphere_roast_server.dart';
 
+const _logLevels = {
+  "trace": Level.trace,
+  "debug": Level.debug,
+  "info": Level.info,
+  "warning": Level.warning,
+  "error": Level.error,
+  "fatal": Level.fatal,
+  "off": Level.off,
+};
+
 void main(List<String> args) async {
   final argParser = ArgParser();
   argParser.addOption(
@@ -21,7 +31,16 @@ void main(List<String> args) async {
     help: "CORS Access-Control-Allow-Origin value for REST/SSE clients",
     defaultsTo: "*",
   );
+  argParser.addOption(
+    "log-level",
+    help: "Minimum log level to emit",
+    allowed: _logLevels.keys,
+    defaultsTo: "info",
+  );
   final argResults = argParser.parse(args);
+  configureNoosphereRoastServerLogging(
+    level: _logLevels[argResults.option("log-level")]!,
+  );
   final configFile = argResults.option("config")!;
   final restPortString = argResults.option("rest-port");
   final restPort = restPortString == null ? null : int.parse(restPortString);

@@ -8,6 +8,15 @@ A server can be run from a given `GrpcConfig` YAML file using `dart run
 noosphere_roast_server:grpc_server --config your_config_file_here.yaml`.
 Alternatively a server may be created using the package as a library.
 
+The server emits `info` logs by default. Use `--log-level` to choose one of
+`trace`, `debug`, `info`, `warning`, `error`, `fatal`, or `off`:
+
+```sh
+dart run noosphere_roast_server:grpc_server \
+  --config your_config_file_here.yaml \
+  --log-level debug
+```
+
 ## Podman / Docker
 
 Build the image from this repository:
