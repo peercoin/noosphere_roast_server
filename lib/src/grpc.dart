@@ -44,8 +44,11 @@ class FrostNoosphereService extends pb.NoosphereServiceBase {
     String method,
     Future<T> Function() f,
   ) async {
+    noosphereRoastServerLogger.d("gRPC $method received");
     try {
-      return await f();
+      final result = await f();
+      noosphereRoastServerLogger.d("gRPC $method completed");
+      return result;
     } on Exception catch (e, stackTrace) {
       throw _wrapException(method, e, stackTrace);
     }
@@ -105,16 +108,32 @@ class FrostNoosphereService extends pb.NoosphereServiceBase {
       throw _wrapException("fetchEventStream", e, stackTrace);
     }
 
+    noosphereRoastServerLogger.d(
+      "gRPC fetchEventStream opened for participant ${session.participantId}",
+    );
+
     // sendTrailers is not always called automatically when the stream ends
     // despite the documentation.
     // Without calling this, the grpc stream may hang and never close.
     final controller = StreamController<Event>(
-      onCancel: () => call.sendTrailers(),
+      onCancel: () {
+        noosphereRoastServerLogger.d(
+          "gRPC fetchEventStream canceled for participant "
+          "${session.participantId}",
+        );
+        call.sendTrailers();
+      },
     );
     // When upstream stream is done, cancel this one
     controller.addStream(session.eventController.stream).then(
-          (_) => controller.close(),
+      (_) {
+        noosphereRoastServerLogger.d(
+          "gRPC fetchEventStream closed for participant "
+          "${session.participantId}",
         );
+        return controller.close();
+      },
+    );
 
     // Pass across all events
     return controller.stream.map(
