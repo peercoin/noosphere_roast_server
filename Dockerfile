@@ -1,4 +1,4 @@
-ARG FROSTY_VERSION=v3.0.0
+ARG FROSTY_VERSION=v4.0.0
 ARG SECP256K1_COINLIB_VERSION=0.7.0
 
 FROM docker.io/library/debian:bookworm AS secp256k1-build
@@ -64,7 +64,7 @@ RUN cargo build --release \
   && mkdir -p /out \
   && cp target/release/libfrosty_rust.so /out/libfrosty_rust.so
 
-FROM docker.io/library/dart:stable
+FROM docker.io/library/dart:stable AS dart-build
 
 WORKDIR /app
 
@@ -74,12 +74,24 @@ RUN dart pub get
 
 COPY . .
 RUN dart pub get --offline
+RUN dart compile exe bin/grpc_server.dart -o /out/noosphere_roast_server
 
+FROM docker.io/library/debian:bookworm-slim
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    libgcc-s1 \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY --from=dart-build /out/noosphere_roast_server /app/noosphere_roast_server
 COPY --from=frosty-build /out/libfrosty_rust.so /app/build/libfrosty_rust.so
 COPY --from=secp256k1-build /out/libsecp256k1.so /app/build/libsecp256k1.so
 ENV LD_LIBRARY_PATH="/app/build:/usr/local/lib"
 
 EXPOSE 50051 8080
 
-ENTRYPOINT ["dart", "run", "noosphere_roast_server:grpc_server", "--config"]
+ENTRYPOINT ["/app/noosphere_roast_server", "--config"]
 CMD ["/config/server.yaml", "--rest-address", "0.0.0.0", "--rest-port", "8080"]
