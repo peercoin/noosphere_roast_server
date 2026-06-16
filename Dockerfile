@@ -79,7 +79,7 @@ COPY --from=frosty-build /out/libfrosty_rust.so /app/build/libfrosty_rust.so
 COPY --from=secp256k1-build /out/libsecp256k1.so /app/build/libsecp256k1.so
 ENV LD_LIBRARY_PATH="/app/build:/usr/local/lib"
 
-EXPOSE 50051
+EXPOSE 50051 8080
 
 ENTRYPOINT ["dart", "run", "noosphere_roast_server:grpc_server", "--config"]
-CMD ["/config/server.yaml"]
+CMD ["/config/server.yaml", "--rest-address", "0.0.0.0", "--rest-port", "8080"]

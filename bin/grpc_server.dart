@@ -27,6 +27,11 @@ void main(List<String> args) async {
     help: "Optional REST/SSE port for browser clients",
   );
   argParser.addOption(
+    "rest-address",
+    help: "REST/SSE bind address",
+    defaultsTo: "localhost",
+  );
+  argParser.addOption(
     "rest-allow-origin",
     help: "CORS Access-Control-Allow-Origin value for REST/SSE clients",
     defaultsTo: "*",
@@ -66,9 +71,10 @@ void main(List<String> args) async {
       api: apiHandler,
       allowOrigin: argResults.option("rest-allow-origin")!,
     );
-    restServer = await restService.serve(port: restPort);
+    final restAddress = argResults.option("rest-address")!;
+    restServer = await restService.serve(address: restAddress, port: restPort);
     noosphereRoastServerLogger.i(
-      "REST/SSE server listening on port ${restServer.port}",
+      "REST/SSE server listening on $restAddress:${restServer.port}",
     );
   }
 

@@ -42,9 +42,13 @@ Run the server with a mounted YAML configuration:
 ```sh
 podman run --rm \
   -p 50051:50051 \
+  -p 8080:8080 \
   -v "$PWD/config.yaml:/config/server.yaml:ro,Z" \
   noosphere-roast-server
 ```
+
+The container starts both gRPC and REST/SSE by default. gRPC listens on the port
+from the YAML config, and REST/SSE listens on container port `8080`.
 
 The `:Z` suffix relabels the mounted config file so Podman can read it on
 SELinux-enforcing hosts. Use `:z` instead if the same config file must be
@@ -55,8 +59,10 @@ To use a different in-container config path, pass it as the command:
 ```sh
 podman run --rm \
   -p 50051:50051 \
+  -p 8080:8080 \
   -v "$PWD/config.yaml:/app/config.yaml:ro,Z" \
-  noosphere-roast-server /app/config.yaml
+  noosphere-roast-server \
+  /app/config.yaml --rest-address 0.0.0.0 --rest-port 8080
 ```
 
 The image builds the `frosty` and `secp256k1-coinlib` native libraries during
