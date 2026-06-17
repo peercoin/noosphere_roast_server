@@ -71,12 +71,13 @@ podman run --rm \
 ```
 
 The container starts both gRPC and REST/SSE by default. gRPC listens on the port
-from the YAML config, and REST/SSE listens on container port `8080`.
+from the YAML config, or `50051` when `port` is omitted. REST/SSE listens on
+container port `8080`.
 
 Port mapping syntax is `host_port:container_port`. If the YAML config says
 `port: 443`, the gRPC server listens on container port `443`, so map it with
 `-p 50051:443` if clients should connect to host port `50051`. If the YAML
-config says `port: 50051`, use `-p 50051:50051`.
+config omits `port` or says `port: 50051`, use `-p 50051:50051`.
 
 The `:Z` suffix relabels the mounted config file so Podman can read it on
 SELinux-enforcing hosts. Use `:z` instead if the same config file must be

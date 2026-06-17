@@ -4,34 +4,37 @@ import 'package:noosphere_roast_client/noosphere_roast_client.dart';
 import 'server.dart';
 
 class GrpcConfig with cl.Writable, MapWritable {
+  static const defaultPort = 50051;
 
   final ServerConfig server;
   final int port;
 
   GrpcConfig({
     required this.server,
-    required this.port,
+    this.port = defaultPort,
   });
 
-  GrpcConfig.fromReader(cl.BytesReader reader) : this(
-    server: ServerConfig.fromReader(reader),
-    port: reader.readUInt16(),
-  );
+  GrpcConfig.fromReader(cl.BytesReader reader)
+      : this(
+          server: ServerConfig.fromReader(reader),
+          port: reader.readUInt16(),
+        );
 
   /// Convenience constructor to construct from serialised [bytes].
   GrpcConfig.fromBytes(Uint8List bytes)
-    : this.fromReader(cl.BytesReader(bytes));
+      : this.fromReader(cl.BytesReader(bytes));
 
   /// Convenience constructor to construct from encoded [hex].
   GrpcConfig.fromHex(String hex) : this.fromBytes(cl.hexToBytes(hex));
 
-  GrpcConfig.fromMapReader(MapReader reader) : this(
-    server: ServerConfig.fromMapReader(reader["server"]),
-    port: reader["port"].require(),
-  );
+  GrpcConfig.fromMapReader(MapReader reader)
+      : this(
+          server: ServerConfig.fromMapReader(reader["server"]),
+          port: reader["port"].value<int>() ?? defaultPort,
+        );
 
   GrpcConfig.fromYaml(String yaml)
-    : this.fromMapReader(MapReader.fromYaml(yaml));
+      : this.fromMapReader(MapReader.fromYaml(yaml));
 
   @override
   void write(cl.Writer writer) {
@@ -41,8 +44,7 @@ class GrpcConfig with cl.Writable, MapWritable {
 
   @override
   Map<Object, Object> map() => {
-    "port": port,
-    "server": server.map(),
-  };
-
+        "port": port,
+        "server": server.map(),
+      };
 }
