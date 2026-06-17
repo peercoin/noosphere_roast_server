@@ -74,7 +74,8 @@ RUN dart pub get
 
 COPY . .
 RUN dart pub get --offline
-RUN dart compile exe bin/grpc_server.dart -o /out/noosphere_roast_server
+RUN mkdir -p /out \
+  && dart compile exe bin/grpc_server.dart -o /out/noosphere_roast_server
 
 FROM docker.io/library/debian:bookworm-slim
 
