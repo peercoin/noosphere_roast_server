@@ -112,6 +112,18 @@ void main() {
       );
     });
 
+    test('can leave CORS headers to a reverse proxy', () async {
+      final noCorsHandler = RestSseNoosphereService(
+        api: api,
+        allowOrigin: null,
+      ).handler;
+
+      final response = await _post(noCorsHandler, '/extend-session', {});
+
+      expect(response.statusCode, 400);
+      expect(response.headers, isNot(contains('access-control-allow-origin')));
+    });
+
     test('maps invalid requests to JSON errors with CORS headers', () async {
       final response = await _post(handler, '/extend-session', {});
 

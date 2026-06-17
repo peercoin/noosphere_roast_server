@@ -117,6 +117,11 @@ For production, replace `'*'` with the frontend origin that loads the web app:
 --rest-allow-origin https://app.example.com
 ```
 
+Only one layer should emit CORS headers. If a reverse proxy such as Caddy is
+already adding `Access-Control-Allow-Origin`, run the backend with
+`--rest-disable-cors` instead. Otherwise browsers will reject responses with a
+combined value such as `*, *`.
+
 ### Caddy Reverse Proxy
 
 Bind container ports to localhost when Caddy runs on the same host:
@@ -143,6 +148,10 @@ api.example.com {
 	}
 }
 ```
+
+Do not add CORS headers in both Caddy and the backend. Either let the backend
+handle CORS with `--rest-allow-origin`, or let Caddy handle it and run the
+backend with `--rest-disable-cors`.
 
 If the browser frontend is served from the same hostname and REST is under a
 prefix, strip the prefix before proxying:

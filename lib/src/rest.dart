@@ -49,7 +49,7 @@ Middleware restSseCors({
 
 class RestSseNoosphereService {
   final ServerApiHandler api;
-  final String allowOrigin;
+  final String? allowOrigin;
 
   RestSseNoosphereService({
     required this.api,
@@ -74,9 +74,14 @@ class RestSseNoosphereService {
       ..post('/key-constructed/ack', _ackKeyConstructed)
       ..get('/sessions/<sid>/events', _fetchEventStream);
 
-    return const Pipeline()
-        .addMiddleware(restSseCors(allowOrigin: allowOrigin))
-        .addHandler(router.call);
+    var pipeline = const Pipeline();
+    final allowOrigin = this.allowOrigin;
+    if (allowOrigin != null) {
+      pipeline = pipeline.addMiddleware(
+        restSseCors(allowOrigin: allowOrigin),
+      );
+    }
+    return pipeline.addHandler(router.call);
   }
 
   Future<HttpServer> serve({

@@ -36,6 +36,12 @@ void main(List<String> args) async {
     help: "CORS Access-Control-Allow-Origin value for REST/SSE clients",
     defaultsTo: "*",
   );
+  argParser.addFlag(
+    "rest-disable-cors",
+    help: "Do not emit CORS headers; use when a reverse proxy handles CORS",
+    defaultsTo: false,
+    negatable: false,
+  );
   argParser.addOption(
     "log-level",
     help: "Minimum log level to emit",
@@ -69,7 +75,9 @@ void main(List<String> args) async {
   if (restPort != null) {
     final restService = RestSseNoosphereService(
       api: apiHandler,
-      allowOrigin: argResults.option("rest-allow-origin")!,
+      allowOrigin: argResults.flag("rest-disable-cors")
+          ? null
+          : argResults.option("rest-allow-origin")!,
     );
     final restAddress = argResults.option("rest-address")!;
     restServer = await restService.serve(address: restAddress, port: restPort);
