@@ -96,8 +96,16 @@ class ServerState {
       );
 
   void sendEventToAll(Event e, {List<SessionID> exclude = const []}) {
-    for (final session in clientSessions.values) {
-      if (!exclude.contains(session.sessionID)) session.sendEvent(e);
+    final sessions = clientSessions.values.toList();
+    final recipients = sessions
+        .where((session) => !exclude.contains(session.sessionID))
+        .toList();
+    noosphereRoastServerLogger.d(
+      "Broadcasting ${e.runtimeType} to ${recipients.length}/"
+      "${sessions.length} sessions",
+    );
+    for (final session in recipients) {
+      session.sendEvent(e);
     }
   }
 

@@ -442,10 +442,14 @@ List<String> _fieldStringList(Map<String, dynamic> json, String name) {
   }).toList();
 }
 
-List<int> _sseEvent(Event event) => utf8.encode(
-      'event: ${_eventType(event)}\n'
-      'data: ${_encodeBytes(event.toBytes())}\n\n',
-    );
+List<int> _sseEvent(Event event) {
+  final type = _eventType(event);
+  noosphereRoastServerLogger.d("REST SSE sent $type");
+  return utf8.encode(
+    'event: $type\n'
+    'data: ${_encodeBytes(event.toBytes())}\n\n',
+  );
+}
 
 String _eventType(Event event) => switch (event) {
       ParticipantStatusEvent() => 'participant_status',
