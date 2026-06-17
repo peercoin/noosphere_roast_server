@@ -278,8 +278,11 @@ class RestSseNoosphereService {
       });
 
   Future<Response> _fetchEventStream(Request request, String sid) async {
+    final description = _requestDescription(request);
+    noosphereRoastServerLogger.d("REST $description received");
     try {
       final session = api.getSession(_sid(_decodeBytes(sid)));
+      noosphereRoastServerLogger.d("REST $description opened");
       return Response.ok(
         session.eventController.stream.map(_sseEvent),
         headers: {
@@ -290,17 +293,17 @@ class RestSseNoosphereService {
       );
     } on InvalidRequest catch (e) {
       noosphereRoastServerLogger.w(
-        "REST ${_requestDescription(request)} rejected: ${e.message}",
+        "REST $description rejected: ${e.message}",
       );
       return _jsonResponse({'error': e.message}, status: 400);
     } on FormatException catch (e) {
       noosphereRoastServerLogger.w(
-        "REST ${_requestDescription(request)} rejected: ${e.message}",
+        "REST $description rejected: ${e.message}",
       );
       return _jsonResponse({'error': e.message}, status: 400);
     } on Exception catch (e, stackTrace) {
       noosphereRoastServerLogger.e(
-        "REST ${_requestDescription(request)} failed",
+        "REST $description failed",
         error: e,
         stackTrace: stackTrace,
       );
@@ -313,22 +316,25 @@ Future<Response> _handleEmpty(
   Request request,
   Future<void> Function() action,
 ) async {
+  final description = _requestDescription(request);
+  noosphereRoastServerLogger.d("REST $description received");
   try {
     await action();
+    noosphereRoastServerLogger.d("REST $description completed");
     return _jsonResponse({});
   } on InvalidRequest catch (e) {
     noosphereRoastServerLogger.w(
-      "REST ${_requestDescription(request)} rejected: ${e.message}",
+      "REST $description rejected: ${e.message}",
     );
     return _jsonResponse({'error': e.message}, status: 400);
   } on FormatException catch (e) {
     noosphereRoastServerLogger.w(
-      "REST ${_requestDescription(request)} rejected: ${e.message}",
+      "REST $description rejected: ${e.message}",
     );
     return _jsonResponse({'error': e.message}, status: 400);
   } on Exception catch (e, stackTrace) {
     noosphereRoastServerLogger.e(
-      "REST ${_requestDescription(request)} failed",
+      "REST $description failed",
       error: e,
       stackTrace: stackTrace,
     );
@@ -340,21 +346,25 @@ Future<Response> _handleJson(
   Request request,
   Future<Response> Function() action,
 ) async {
+  final description = _requestDescription(request);
+  noosphereRoastServerLogger.d("REST $description received");
   try {
-    return await action();
+    final response = await action();
+    noosphereRoastServerLogger.d("REST $description completed");
+    return response;
   } on InvalidRequest catch (e) {
     noosphereRoastServerLogger.w(
-      "REST ${_requestDescription(request)} rejected: ${e.message}",
+      "REST $description rejected: ${e.message}",
     );
     return _jsonResponse({'error': e.message}, status: 400);
   } on FormatException catch (e) {
     noosphereRoastServerLogger.w(
-      "REST ${_requestDescription(request)} rejected: ${e.message}",
+      "REST $description rejected: ${e.message}",
     );
     return _jsonResponse({'error': e.message}, status: 400);
   } on Exception catch (e, stackTrace) {
     noosphereRoastServerLogger.e(
-      "REST ${_requestDescription(request)} failed",
+      "REST $description failed",
       error: e,
       stackTrace: stackTrace,
     );
