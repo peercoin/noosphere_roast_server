@@ -11,7 +11,6 @@ import 'helpers.dart';
 import 'sig_data.dart';
 
 class EventCollector<T> {
-
   static final Finalizer<StreamSubscription<Object>> _finalizer =
       Finalizer((sub) => sub.cancel());
 
@@ -69,7 +68,6 @@ class EventCollector<T> {
     expect(await getEvents(), everyElement(isA<ET>()));
     await expectNoError();
   }
-
 }
 
 typedef ClientEventCollector = EventCollector<ClientEvent>;
@@ -81,7 +79,6 @@ class ServerTestClient extends EventCollector<Event> {
 }
 
 class LoginRespMockApi extends ServerApiHandler {
-
   final List<SignaturesRequestEvent> sigRequests;
   final List<SignatureNewRoundsEvent> sigRounds;
   final List<CompletedSignaturesRequest> completedSigs;
@@ -112,12 +109,10 @@ class LoginRespMockApi extends ServerApiHandler {
       events: upstream.events,
     );
   }
-
 }
 
 /// Gives false DkgAck that wasn't requested
 class MockUnrequestedAckApi extends ServerApiHandler {
-
   MockUnrequestedAckApi() : super(config: serverConfig);
 
   @override
@@ -140,11 +135,9 @@ class MockUnrequestedAckApi extends ServerApiHandler {
       ...upstream,
     };
   }
-
 }
 
 class MockPrematureSigsApi extends ServerApiHandler {
-
   MockPrematureSigsApi() : super(config: serverConfig);
 
   @override
@@ -152,12 +145,11 @@ class MockPrematureSigsApi extends ServerApiHandler {
     required SessionID sid,
     required SignaturesRequestId reqId,
     required List<SignatureReply> replies,
-  }) => Future.value(SignaturesCompleteResponse([dummySig]));
-
+  }) =>
+      Future.value(SignaturesCompleteResponse([dummySig]));
 }
 
 class TestContext {
-
   late final ServerApiHandler api;
   final List<ServerTestClient> clients = [];
 
@@ -166,7 +158,6 @@ class TestContext {
   }
 
   Future<ServerTestClient> login(int i) async {
-
     final response = await api.login(
       groupFingerprint: groupConfig.fingerprint,
       participantId: ids[i],
@@ -181,13 +172,12 @@ class TestContext {
     clients.add(client);
 
     return client;
-
   }
 
-  Future<List<ServerTestClient>> multiLogin(int n, { int skip = 0 })
-    => Future.wait(List.generate(n, (i) => login(i+skip)));
+  Future<List<ServerTestClient>> multiLogin(int n, {int skip = 0}) =>
+      Future.wait(List.generate(n, (i) => login(i + skip)));
 
-  DkgState addDkg(Identifier creator, String name, { int threshold = 2 }) {
+  DkgState addDkg(Identifier creator, String name, {int threshold = 2}) {
     return api.state.nameToDkg[name] = DkgState(
       details: signObject(getDkgDetails(name: name, threshold: threshold)),
       creator: creator,
@@ -196,18 +186,18 @@ class TestContext {
   }
 
   SignaturesCoordinationState addSigReq(
-    Identifier creator,
-    [ List<int> tweaks = const [0], ]
-  ) {
+    Identifier creator, [
+    List<int> tweaks = const [0],
+  ]) {
     final signedDetails = signObject(
       getSignaturesDetails(singleSigTweaks: tweaks),
     );
-    return api.state.sigRequests[signedDetails.obj.id]
-      = SignaturesCoordinationState(
-        details: signedDetails,
-        creator: creator,
-        keys: tweaks.map((t) => getAggregateKeyInfo(tweak: t)).toSet(),
-      );
+    return api.state.sigRequests[signedDetails.obj.id] =
+        SignaturesCoordinationState(
+      details: signedDetails,
+      creator: creator,
+      keys: tweaks.map((t) => getAggregateKeyInfo(tweak: t)).toSet(),
+    );
   }
 
   CompletedSignatures addCompletedSig(
@@ -227,15 +217,19 @@ class TestContext {
     return completed;
   }
 
-  DkgState addDkgRound1(Identifier creator, String name, List<int> whoCommit)
-    => addDkg(creator, name)..round1.commitments.addAll(
-      whoCommit.map((i) => (ids[i], getDkgPart1(i).public)).toList(),
-    );
+  DkgState addDkgRound1(Identifier creator, String name, List<int> whoCommit) =>
+      addDkg(creator, name)
+        ..round1.commitments.addAll(
+              whoCommit.map((i) => (ids[i], getDkgPart1(i).public)).toList(),
+            );
 
   DkgState addDkgRound2(
-    Identifier creator, String name, [ Uint8List? expectedHash, ]
-  ) => addDkg(creator, name)
-    ..round = DkgRound2State(expectedHash: expectedHash ?? Uint8List(32));
+    Identifier creator,
+    String name, [
+    Uint8List? expectedHash,
+  ]) =>
+      addDkg(creator, name)
+        ..round = DkgRound2State(expectedHash: expectedHash ?? Uint8List(32));
 
   Future<void> clearEvents() async {
     for (final client in clients) {
@@ -248,11 +242,9 @@ class TestContext {
       await client.expectNoEventsOrError();
     }
   }
-
 }
 
 class TestClient {
-
   final Client client;
   final ClientEventCollector evCollector;
   final InMemoryClientStorage store;
@@ -260,12 +252,11 @@ class TestClient {
   TestClient._(this.client, this.evCollector, this.store);
 
   static Future<TestClient> login(
-    ApiRequestInterface api, int i, {
-      InMemoryClientStorage? storage,
-      void Function()? onDisconnect,
-    }
-  ) async {
-
+    ApiRequestInterface api,
+    int i, {
+    InMemoryClientStorage? storage,
+    void Function()? onDisconnect,
+  }) async {
     final store = storage ?? InMemoryClientStorage();
     final client = await Client.login(
       config: getClientConfig(i),
@@ -277,19 +268,18 @@ class TestClient {
     final evCollector = ClientEventCollector(client.events);
 
     return TestClient._(client, evCollector, store);
-
   }
 
   Future<void> logout() => client.logout();
 
-  Future<void> expectOnlyLoginEvents()
-    => evCollector.expectOnlyOneEventType<ParticipantStatusClientEvent>();
+  Future<void> expectOnlyLoginEvents() =>
+      evCollector.expectOnlyOneEventType<ParticipantStatusClientEvent>();
 
-  Future<void> waitForNoSigsReqs()
-    => waitFor(() => client.signaturesRequests.isEmpty);
+  Future<void> waitForNoSigsReqs() =>
+      waitFor(() => client.signaturesRequests.isEmpty);
 
   Future<void> waitForKeyConstructed() => waitFor(
-    () => store.keys.values.first.keyConstruction is KeyConstructionComplete,
-  );
-
+        () =>
+            store.keys.values.first.keyConstruction is KeyConstructionComplete,
+      );
 }

@@ -2,15 +2,12 @@ import 'package:noosphere_roast_server/src/server/state/ring_buffer.dart';
 import 'package:test/test.dart';
 
 void main() {
-
   group("RingBuffer", () {
-
     test("must be a positive maxSize", () {
       expect(() => RingBuffer<int>(-1), throwsArgumentError);
     });
 
     group("given RingBuffer of 10 max", () {
-
       late RingBuffer<int> buffer;
       setUp(() => buffer = RingBuffer(10));
 
@@ -41,13 +38,9 @@ void main() {
         for (int i = 0; i < 11; i++) {
           buffer.add(i);
         }
-        expect(buffer.flushBuffer(), List.generate(10, (i) => i+1));
+        expect(buffer.flushBuffer(), List.generate(10, (i) => i + 1));
         expectFlushEmpty();
       });
-
     });
-
   });
-
 }
-

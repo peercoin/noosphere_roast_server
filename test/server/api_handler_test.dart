@@ -14,20 +14,20 @@ import '../test_keys.dart';
 
 void main() {
   group("ServerApiHander", () {
-
     setUpAll(loadFrosty);
 
     late TestContext ctx;
     setUp(() => ctx = TestContext());
 
     Future<void> expectInvalid(void Function() f) async => await expectLater(
-      f, throwsA(isA<InvalidRequest>()),
-    );
+          f,
+          throwsA(isA<InvalidRequest>()),
+        );
 
     void expectSigned(Signed signed) => expect(
-      signed.verify(getPrivkey(0).pubkey),
-      true,
-    );
+          signed.verify(getPrivkey(0).pubkey),
+          true,
+        );
 
     Future<void> expectOnlyLoginEventsForAll() async {
       for (final client in ctx.clients) {
@@ -36,9 +36,7 @@ void main() {
     }
 
     group(".login()", () {
-
       test("invalid request", () async {
-
         // Invalid version
         await expectInvalid(
           () => ctx.api.login(
@@ -63,11 +61,9 @@ void main() {
             participantId: ids.first,
           ),
         );
-
       });
 
       test("success", () async {
-
         final response = await ctx.api.login(
           groupFingerprint: groupConfig.fingerprint,
           participantId: ids.first,
@@ -75,18 +71,14 @@ void main() {
         expect(ctx.api.state.challenges[response.challenge]!.id, ids.first);
         expect(response.expiry.isExpired, false);
         expect(response.challenge.n.length, 16);
-
       });
-
     });
 
     group(".respondToChallenge()", () {
-
       late AuthChallenge challenge;
       late Signed<AuthChallenge> validResp;
 
       setUp(() async {
-
         final response = await ctx.api.login(
           groupFingerprint: groupConfig.fingerprint,
           participantId: ids.first,
@@ -94,11 +86,9 @@ void main() {
 
         challenge = response.challenge;
         validResp = Signed.sign(obj: challenge, key: getPrivkey(0));
-
       });
 
       test("invalid request", () async {
-
         // No challenge
         await expectInvalid(
           () => ctx.api.respondToChallenge(
@@ -112,15 +102,14 @@ void main() {
             Signed.sign(obj: challenge, key: getPrivkey(1)),
           ),
         );
-
       });
 
       test("expired challenge", () async {
-
         // Create challenge to be immediately expired for participant 2
         final challenge = AuthChallenge();
         ctx.api.state.challenges[challenge] = ChallengeDetails(
-          id: ids[1], expiry: Expiry(Duration(days: -1)),
+          id: ids[1],
+          expiry: Expiry(Duration(days: -1)),
         );
 
         await expectInvalid(
@@ -130,11 +119,9 @@ void main() {
         );
 
         expect(ctx.api.state.challenges[challenge], null);
-
       });
 
       test("success", () async {
-
         // Add round2 DKG that should be removed
         ctx.addDkgRound2(ids[1], "round2");
 
@@ -148,6 +135,7 @@ void main() {
           final commitments = ctx.api.state.nameToDkg[name]!.round1.commitments;
           expect(commitments.map((e) => e.$1), ids);
         }
+
         void expectResetDkgInfo() {
           expectDkgCommitments("123", [ids[1]]);
           expectDkgCommitments("round2", []);
@@ -185,6 +173,7 @@ void main() {
           expect(ev.creator, creator);
           expect(newDkg.commitments.map((c) => c.$1), ids);
         }
+
         expectDkg(newDkgs.first, "123", ids.first, [ids[1]]);
         expectDkg(newDkgs.last, "round2", ids[1], []);
 
@@ -202,11 +191,11 @@ void main() {
         // Other participant received logout and login event
 
         void expectLoginEvent(Event ev, bool loggedIn) => expect(
-          ev,
-          isA<ParticipantStatusEvent>()
-          .having((e) => e.id, "id", ids[0])
-          .having((e) => e.loggedIn, "loggedIn", loggedIn),
-        );
+              ev,
+              isA<ParticipantStatusEvent>()
+                  .having((e) => e.id, "id", ids[0])
+                  .having((e) => e.loggedIn, "loggedIn", loggedIn),
+            );
         {
           final events = await other.getEvents();
           expect(events.length, 2);
@@ -232,25 +221,23 @@ void main() {
           expectLoginEvent(events.first, false);
         }
         expectResetDkgInfo();
-
       });
 
       test("provides signature data on success", () async {
-
         // Add signature requests with pending rounds on second and third only
         final sigStates = [
-          ctx.addSigReq(ids.first, [0,1]),
-          ctx.addSigReq(ids.first, [2,3,4]),
-          ctx.addSigReq(ids.first, [5,6]),
+          ctx.addSigReq(ids.first, [0, 1]),
+          ctx.addSigReq(ids.first, [2, 3, 4]),
+          ctx.addSigReq(ids.first, [5, 6]),
         ];
         final sigIds = sigStates.map((state) => state.details.obj.id).toList();
 
         SignatureRoundState addRound(int reqI, int sigI, Set<Identifier> ids) {
-          final sigState = sigStates[reqI].sigs[sigI]
-            as SingleSignatureInProgressState;
+          final sigState =
+              sigStates[reqI].sigs[sigI] as SingleSignatureInProgressState;
           final round = SignatureRoundState(
             SigningCommitmentSet(
-              { for (final id in ids) id: getSignPart1(i:0).commitment },
+              {for (final id in ids) id: getSignPart1(i: 0).commitment},
             ),
           );
           for (final id in ids) {
@@ -268,7 +255,8 @@ void main() {
         addRound(1, 1, ids.take(3).toSet());
         // Signature 2 has share for participant already
         addRound(1, 2, ids.take(4).toSet())
-          .shares.add((ids.first, dummyPart2().share));
+            .shares
+            .add((ids.first, dummyPart2().share));
 
         // Third request has rounds for all
         addRound(2, 0, ids.take(2).toSet());
@@ -303,7 +291,7 @@ void main() {
         }
 
         expectRounds(1, [1]);
-        expectRounds(2, [0,1]);
+        expectRounds(2, [0, 1]);
 
         // Completed sigs. Only include the one without the ACK
         expect(response.completedSigs, hasLength(1));
@@ -311,19 +299,17 @@ void main() {
           response.completedSigs.first.details.obj.id,
           noAckCompletedSigs.details.obj.id,
         );
-
       });
-
     });
 
     group(".extendSession()", () {
-
       late SessionID sid;
       setUp(() async => sid = (await ctx.login(0)).sid);
 
       test(
         "invalid request",
-        () async => await expectInvalid(() => ctx.api.extendSession(SessionID())),
+        () async =>
+            await expectInvalid(() => ctx.api.extendSession(SessionID())),
       );
 
       test("success", () async {
@@ -331,26 +317,21 @@ void main() {
         expect(newExpiry.isExpired, false);
         expect(ctx.api.state.clientSessions[sid]!.expiry.time, newExpiry.time);
       });
-
     });
 
     group(".requestNewDkg()", () {
-
       late ServerTestClient client;
       late DkgPublicCommitment commitment;
 
       setUp(() async {
-
         client = await ctx.login(0);
         commitment = getDkgPart1(0).public;
 
         // Already existing DKG request
         ctx.addDkg(ids.first, "other");
-
       });
 
       test("invalid request", () async {
-
         // Invalid session id
         await expectInvalid(
           () => ctx.api.requestNewDkg(
@@ -364,7 +345,7 @@ void main() {
         await expectInvalid(
           () => ctx.api.requestNewDkg(
             sid: client.sid,
-            signedDetails: signObject(getDkgDetails(name:"other")),
+            signedDetails: signObject(getDkgDetails(name: "other")),
             commitment: commitment,
           ),
         );
@@ -408,11 +389,9 @@ void main() {
             commitment: commitment,
           ),
         );
-
       });
 
       test("success", () async {
-
         // Add other participant session to obtain an event
         final other = await ctx.login(1);
 
@@ -451,13 +430,10 @@ void main() {
 
         // Sending participant shouldn't receive event
         await client.expectNoEvents();
-
       });
-
     });
 
     group(".rejectDkg()", () {
-
       late ServerTestClient client, other;
 
       setUp(() async {
@@ -468,14 +444,15 @@ void main() {
       });
 
       test("invalid request", () async {
-        await expectInvalid(() => ctx.api.rejectDkg(sid: SessionID(), name: "123"));
+        await expectInvalid(
+            () => ctx.api.rejectDkg(sid: SessionID(), name: "123"));
       });
 
       test("success", () async {
-
         void expectExists(bool exists) => expect(
-          ctx.api.state.nameToDkg.containsKey("123"), exists,
-        );
+              ctx.api.state.nameToDkg.containsKey("123"),
+              exists,
+            );
 
         await ctx.api.rejectDkg(sid: client.sid, name: "other");
         expectExists(true);
@@ -490,16 +467,13 @@ void main() {
         expect(
           events.first,
           isA<DkgRejectEvent>()
-          .having((e) => e.name, "name", "123")
-          .having((e) => e.participant, "participant", ids.first),
+              .having((e) => e.name, "name", "123")
+              .having((e) => e.participant, "participant", ids.first),
         );
-
       });
-
     });
 
     group(".submitDkgCommitment()", () {
-
       late List<DkgPart1> commitments;
 
       setUp(() async {
@@ -547,11 +521,9 @@ void main() {
       });
 
       test("success", () async {
-
         await expectOnlyLoginEventsForAll();
 
         for (int i = 1; i < 10; i++) {
-
           await ctx.api.submitDkgCommitment(
             sid: ctx.clients[i].sid,
             name: "123",
@@ -560,7 +532,6 @@ void main() {
 
           // Expect events
           for (final client in ctx.clients) {
-
             if (client.sid == ctx.clients[i].sid) {
               await client.expectNoEvents();
               continue;
@@ -574,9 +545,7 @@ void main() {
             expect(ev.name, "123");
             expect(ev.participant, ids[i]);
             expect(ev.commitment.toBytes(), commitments[i].public.toBytes());
-
           }
-
         }
 
         // Expect moving onto round 2
@@ -584,19 +553,15 @@ void main() {
           ctx.api.state.nameToDkg["123"]!.round,
           isA<DkgRound2State>(),
         );
-
       });
-
     });
 
     group(".submitDkgRound2()", () {
-
       late List<DkgPart2> part2s;
       late List<cl.SchnorrSignature> commitmentSetSigs;
       late List<Map<Identifier, DkgEncryptedSecret>> secretMaps;
 
       setUp(() async {
-
         await ctx.multiLogin(10);
         final part1s = List.generate(10, (i) => getDkgPart1(i));
         final commitmentSet = DkgCommitmentSet(
@@ -618,24 +583,26 @@ void main() {
           10,
           (i) => {
             for (int j = 0; j < 10; j++)
-              if (j != i) ids[j]: DkgEncryptedSecret.encrypt(
-                secretShare: part2s[i].sharesToGive[ids[j]]!,
-                recipientKey: getPrivkey(j).pubkey,
-                senderKey: getPrivkey(i),
-              ),
+              if (j != i)
+                ids[j]: DkgEncryptedSecret.encrypt(
+                  secretShare: part2s[i].sharesToGive[ids[j]]!,
+                  recipientKey: getPrivkey(j).pubkey,
+                  senderKey: getPrivkey(i),
+                ),
           },
         );
 
         ctx.addDkg(ids.first, "round1");
 
         // Add round 2 with last participant already having provided
-        ctx.addDkgRound2(ids.first, "round2", commitmentSet.hash)
-          .round2.participantsProvided.add(ids.last);
-
+        ctx
+            .addDkgRound2(ids.first, "round2", commitmentSet.hash)
+            .round2
+            .participantsProvided
+            .add(ids.last);
       });
 
       test("invalid request", () async {
-
         // Invalid session ID or already provided round 2
         for (final badSid in [SessionID(), ctx.clients.last.sid]) {
           await expectInvalid(
@@ -698,16 +665,13 @@ void main() {
             ),
           );
         }
-
       });
 
       test("success", () async {
-
         await expectOnlyLoginEventsForAll();
 
         // All ctx.clients except last to give secrets
         for (int i = 0; i < 9; i++) {
-
           await ctx.api.submitDkgRound2(
             sid: ctx.clients[i].sid,
             name: "round2",
@@ -717,16 +681,15 @@ void main() {
 
           // Expect state to record participant except for last
           if (i < 8) {
-            final provided
-              = ctx.api.state.nameToDkg["round2"]!.round2.participantsProvided;
-            expect(provided.length, i+2);
+            final provided =
+                ctx.api.state.nameToDkg["round2"]!.round2.participantsProvided;
+            expect(provided.length, i + 2);
             expect(provided, contains(ids[i]));
           }
 
           // Expect all other ctx.clients to receive event
           for (int j = 0; j < 10; j++) {
             if (j != i) {
-
               final events = await ctx.clients[j].getEvents();
               expect(events.length, 1);
               expect(
@@ -742,20 +705,16 @@ void main() {
                 ev.secret.ciphertext.toBytes(),
                 secretMaps[i][ids[j]]!.ciphertext.toBytes(),
               );
-
             }
           }
         }
 
         // Expect DKG state removed after all participants provided
         expect(ctx.api.state.nameToDkg["round2"], null);
-
       });
-
     });
 
     group(".sendDkgAcks()", () {
-
       late List<SignedDkgAck> acks;
 
       setUp(() async {
@@ -765,7 +724,6 @@ void main() {
       });
 
       test("invalid request", () async {
-
         // Invalid session ID
         await expectInvalid(
           () => ctx.api.sendDkgAcks(sid: SessionID(), acks: acks.toSet()),
@@ -793,16 +751,13 @@ void main() {
             },
           ),
         );
-
       });
 
       test("success", () async {
-
         await expectOnlyLoginEventsForAll();
 
         // Add all ACKs and expect events
         for (int i = 0; i < 9; i++) {
-
           // Allow any sender
           final senderI = i % 3;
 
@@ -814,13 +769,11 @@ void main() {
 
           // Check events given to participants except for sender and signer
           for (int j = 0; j < 8; j++) {
-
             final evs = await ctx.clients[j].getEvents();
 
             if (j == i || j == senderI) {
               expect(evs, isEmpty);
             } else {
-
               expect(evs.length, 1);
               final acks = (evs.first as DkgAckEvent).acks;
 
@@ -833,33 +786,26 @@ void main() {
                 expect(acks.last.signer, ids.last);
                 expect(acks.last.signed.obj.accepted, false);
               }
-
             }
-
           }
 
           // Check state
           final ackMap = ctx.api.state.dkgAckCache[groupPublicKey]!.acks;
-          expect(ackMap.length, i+2);
+          expect(ackMap.length, i + 2);
           expect(ackMap, contains(ids[i]));
           expect(ackMap, contains(ids.last));
           expect(ackMap[ids[i]]!.obj.accepted, i % 2 == 0);
           expect(ackMap[ids.last]!.obj.accepted, false);
-
         }
-
       });
-
     });
 
     group(".requestDkgAcks()", () {
-
       late cl.ECCompressedPublicKey altKey, altKey2;
       // The ones the server has and will be given to the first participant
       late Set<SignedDkgAck> toHave;
 
       setUp(() async {
-
         // Not everyone is logged in
         await ctx.multiLogin(8);
 
@@ -867,9 +813,8 @@ void main() {
 
         // Include three existing acks for main key
         final expiry = Expiry(Duration(minutes: 1));
-        final cache
-          = ctx.api.state.dkgAckCache[groupPublicKey]
-          = DkgAckCache(expiry);
+        final cache =
+            ctx.api.state.dkgAckCache[groupPublicKey] = DkgAckCache(expiry);
         for (int i = 0; i < 3; i++) {
           final ack = getDkgAck(i, true);
           if (i != 0) toHave.add(ack);
@@ -880,31 +825,32 @@ void main() {
         altKey = groupPublicKey.tweak(Uint8List(32)..last = 1)!;
         final ack = getDkgAck(1, true, groupKey: altKey);
         toHave.add(ack);
-        ctx.api.state.dkgAckCache[altKey]
-          = DkgAckCache(expiry)..acks[ids[1]] = ack.signed;
+        ctx.api.state.dkgAckCache[altKey] = DkgAckCache(expiry)
+          ..acks[ids[1]] = ack.signed;
 
         // Another key without a cached ACK
         altKey2 = groupPublicKey.tweak(Uint8List(32)..last = 2)!;
 
         await expectOnlyLoginEventsForAll();
-
       });
 
       DkgAckRequest getReq(
-        Set<int> idIs,
-        [ cl.ECCompressedPublicKey? key, ]
-      ) => DkgAckRequest(
-        ids: idIs.map((i) => ids[i]).toSet(),
-        groupPublicKey: key ?? groupPublicKey,
-      );
+        Set<int> idIs, [
+        cl.ECCompressedPublicKey? key,
+      ]) =>
+          DkgAckRequest(
+            ids: idIs.map((i) => ids[i]).toSet(),
+            groupPublicKey: key ?? groupPublicKey,
+          );
 
       test("invalid request", () async {
-
         // Invalid Session ID
         await expectInvalid(
           () => ctx.api.requestDkgAcks(
             sid: SessionID(),
-            requests: { getReq({0}) },
+            requests: {
+              getReq({0})
+            },
           ),
         );
 
@@ -913,7 +859,7 @@ void main() {
           () => ctx.api.requestDkgAcks(
             sid: ctx.clients.first.sid,
             requests: {
-              DkgAckRequest(ids: { badId }, groupPublicKey: groupPublicKey),
+              DkgAckRequest(ids: {badId}, groupPublicKey: groupPublicKey),
             },
           ),
         );
@@ -922,23 +868,23 @@ void main() {
         await expectInvalid(
           () => ctx.api.requestDkgAcks(
             sid: ctx.clients.first.sid,
-            requests: { getReq({0}) },
+            requests: {
+              getReq({0})
+            },
           ),
         );
-
       });
 
       test("success", () async {
-
         // Ask for two cached ACKs from the first key and a cached ACK for the
         // second, two ACKs that doesn't exist for the first key and another ACK
         // for a key without a cache
         final haveAcks = await ctx.api.requestDkgAcks(
           sid: ctx.clients.first.sid,
           requests: {
-            getReq({ 1, 2, 3, 4 }),
-            getReq({ 1 }, altKey),
-            getReq({ 1 }, altKey2),
+            getReq({1, 2, 3, 4}),
+            getReq({1}, altKey),
+            getReq({1}, altKey2),
           },
         );
 
@@ -949,7 +895,6 @@ void main() {
 
         // Other clients should receive requests for missing ACKs
         for (final client in ctx.clients.skip(1)) {
-
           final evs = await client.getEvents();
           expect(evs.length, 1);
           final reqs = (evs.first as DkgAckRequestEvent).requests;
@@ -957,34 +902,32 @@ void main() {
           expect(reqs.length, 2);
           expect(
             reqs.firstWhere((req) => req.groupPublicKey == groupPublicKey).ids,
-            { ids[3], ids[4] },
+            {ids[3], ids[4]},
           );
           expect(
             reqs.firstWhere((req) => req.groupPublicKey == altKey2).ids,
-            { ids[1] },
+            {ids[1]},
           );
         }
-
       });
 
       test("do not send DkgAckRequestEvent when there are no needed", () async {
-
         final haveAcks = await ctx.api.requestDkgAcks(
           sid: ctx.clients.first.sid,
           // Request only what the server has
-          requests: { getReq({ 1, 2 }), getReq({1}, altKey) },
+          requests: {
+            getReq({1, 2}),
+            getReq({1}, altKey)
+          },
         );
         expect(haveAcks, toHave);
 
         // No events should be had as all ACKs were returned
         await ctx.expectNoEventsOrError();
-
       });
-
     });
 
     group(".requestSignatures()", () {
-
       late ServerTestClient client;
       late List<AggregateKeyInfo> keys;
       late Signed<SignaturesRequestDetails> existing;
@@ -994,35 +937,33 @@ void main() {
       late List<SigningCommitment> validCommitments;
 
       setUp(() async {
-
         client = await ctx.login(0);
         keys = List.generate(2, (i) => getAggregateKeyInfo(tweak: i));
         existing = signObject(getSignaturesDetails(singleSigTweaks: [0xff]));
         validKeys = {keys[0]};
-        keysForExisting = { getAggregateKeyInfo(tweak: 0xff) };
+        keysForExisting = {getAggregateKeyInfo(tweak: 0xff)};
         validDetails = getSignaturesDetails();
         validSignedDetails = signObject(validDetails);
         validCommitments = [getSignPart1(tweak: 0).commitment];
 
         ctx.addSigReq(ids.first, [0xff]);
-
       });
 
       test("invalid request", () async {
-
         Future<void> expectInvalidSigReq({
           SessionID? sid,
           Set<AggregateKeyInfo>? keys,
           Signed<SignaturesRequestDetails>? signedDetails,
           List<SigningCommitment>? commitments,
-        }) => expectInvalid(
-          () => ctx.api.requestSignatures(
-            sid: sid ?? client.sid,
-            keys: keys ?? validKeys,
-            signedDetails: signedDetails ?? validSignedDetails,
-            commitments: commitments ?? validCommitments,
-          ),
-        );
+        }) =>
+            expectInvalid(
+              () => ctx.api.requestSignatures(
+                sid: sid ?? client.sid,
+                keys: keys ?? validKeys,
+                signedDetails: signedDetails ?? validSignedDetails,
+                commitments: commitments ?? validCommitments,
+              ),
+            );
 
         // Invalid Session ID
         await expectInvalidSigReq(sid: SessionID());
@@ -1058,11 +999,9 @@ void main() {
         await expectInvalidSigReq(
           signedDetails: signObject(getSignaturesDetails(), 1),
         );
-
       });
 
       test("success", () async {
-
         // Add other participant session to obtain an event
         final other = await ctx.login(1);
 
@@ -1083,7 +1022,7 @@ void main() {
         expect(req.sigs, hasLength(1));
         expect(
           (req.sigs.first as SingleSignatureInProgressState)
-          .nextCommitments[ids.first],
+              .nextCommitments[ids.first],
           validCommitments.first,
         );
 
@@ -1095,13 +1034,10 @@ void main() {
         expect(ev.creator, ids.first);
 
         await client.expectNoEventsOrError();
-
       });
-
     });
 
     group("given signatures request", () {
-
       late List<ServerTestClient> clients;
       late List<ParticipantKeyInfo> k1shares;
       late List<ParticipantKeyInfo> k2shares;
@@ -1110,7 +1046,6 @@ void main() {
       late List<SignPart1> creatorPart1s;
 
       setUp(() async {
-
         clients = await ctx.multiLogin(10);
 
         // Request with two root keys: k1 and k2
@@ -1151,25 +1086,26 @@ void main() {
           expiry: Expiry(Duration(hours: 1)),
         );
 
-        creatorPart1s = [k1shares, k1shares, k2shares, k1shares].map(
-          (li) => SignPart1(privateShare: li.first.private.share),
-        ).toList();
+        creatorPart1s = [k1shares, k1shares, k2shares, k1shares]
+            .map(
+              (li) => SignPart1(privateShare: li.first.private.share),
+            )
+            .toList();
 
         await ctx.api.requestSignatures(
           sid: clients.first.sid,
-          keys: { k1shares.first.aggregate, k2shares.first.aggregate },
+          keys: {k1shares.first.aggregate, k2shares.first.aggregate},
           signedDetails: Signed.sign(obj: sigsDetails, key: getPrivkey(0)),
           commitments: creatorPart1s.map((part1) => part1.commitment).toList(),
         );
 
         reqState = ctx.api.state.sigRequests[sigsDetails.id]!;
-
       });
 
       void expectSigReqExists(bool exists) => expect(
-        ctx.api.state.sigRequests.containsKey(sigsDetails.id),
-        exists,
-      );
+            ctx.api.state.sigRequests.containsKey(sigsDetails.id),
+            exists,
+          );
 
       Future<void> expectFailedReq() async {
         for (final client in clients) {
@@ -1182,7 +1118,6 @@ void main() {
       }
 
       group(".rejectSignaturesRequest()", () {
-
         test("invalid request", () async {
           // Invalid Session ID
           await expectInvalid(
@@ -1202,11 +1137,10 @@ void main() {
         );
 
         test("success", () async {
-
           Future<void> doReject(int i) => ctx.api.rejectSignaturesRequest(
-            sid: clients[i].sid,
-            reqId: sigsDetails.id,
-          );
+                sid: clients[i].sid,
+                reqId: sigsDetails.id,
+              );
 
           await ctx.clearEvents();
 
@@ -1227,9 +1161,9 @@ void main() {
           void expectNearlyFailed() {
             expect(
               reqState.rejectors,
-              { ...ids.take(2), ...ids.skip(3).take(3) },
+              {...ids.take(2), ...ids.skip(3).take(3)},
             );
-            expect(reqState.malicious, { ids[2] });
+            expect(reqState.malicious, {ids[2]});
           }
 
           expectNearlyFailed();
@@ -1244,25 +1178,24 @@ void main() {
           // Add one more rejection leading to failure
           await doReject(6);
           await expectFailedReq();
-
         });
-
       });
 
       group(".submitSignatureReplies()", () {
-
         HDParticipantKeyInfo deriveInfo(
-          ParticipantKeyInfo info, List<int> indicies,
-        ) => indicies.fold(
-          HDParticipantKeyInfo.masterFromInfo(info),
-          (key, i) => key.derive(i),
-        );
+          ParticipantKeyInfo info,
+          List<int> indicies,
+        ) =>
+            indicies.fold(
+              HDParticipantKeyInfo.masterFromInfo(info),
+              (key, i) => key.derive(i),
+            );
 
         late List<List<ParticipantKeyInfo>> sigInfos;
 
         setUp(() async {
-          final sharedk1Info
-            = k1shares.map((info) => deriveInfo(info, [0])).toList();
+          final sharedk1Info =
+              k1shares.map((info) => deriveInfo(info, [0])).toList();
           sigInfos = [
             sharedk1Info,
             k1shares.map((info) => deriveInfo(info, [1, 0x7fffffff])).toList(),
@@ -1272,31 +1205,33 @@ void main() {
         });
 
         SignPart1 doPart1(int i, int sigI) => SignPart1(
-          privateShare: sigInfos[sigI][i].private.share,
-        );
+              privateShare: sigInfos[sigI][i].private.share,
+            );
 
         SignatureReply getReply(
-          int i, int sigI, {
-            SigningCommitment? commitment,
-            SigningNonces? nonce,
-            SigningCommitmentSet? commitments,
-            SignDetails? signDetailsOverride,
-          }
-        ) => SignatureReply(
-          sigI: sigI,
-          nextCommitment: (commitment ?? doPart1(i, sigI).commitment),
-          share: commitments == null ? null : SignPart2(
-            identifier: ids[i],
-            details: signDetailsOverride
-              ?? sigsDetails.requiredSigs[sigI].signDetails,
-            ourNonces: nonce!,
-            commitments: commitments,
-            info: sigInfos[sigI][i].signing,
-          ).share,
-        );
+          int i,
+          int sigI, {
+          SigningCommitment? commitment,
+          SigningNonces? nonce,
+          SigningCommitmentSet? commitments,
+          SignDetails? signDetailsOverride,
+        }) =>
+            SignatureReply(
+              sigI: sigI,
+              nextCommitment: (commitment ?? doPart1(i, sigI).commitment),
+              share: commitments == null
+                  ? null
+                  : SignPart2(
+                      identifier: ids[i],
+                      details: signDetailsOverride ??
+                          sigsDetails.requiredSigs[sigI].signDetails,
+                      ourNonces: nonce!,
+                      commitments: commitments,
+                      info: sigInfos[sigI][i].signing,
+                    ).share,
+            );
 
         test("invalid request", () async {
-
           final validResp = getReply(1, 0);
 
           // Invalid Session ID
@@ -1350,7 +1285,7 @@ void main() {
           // Commitment exists
           final part1 = doPart1(1, 3);
           (reqState.sigs[3] as SingleSignatureInProgressState)
-            .nextCommitments[ids[1]] = part1.commitment;
+              .nextCommitments[ids[1]] = part1.commitment;
           await expectMalicious([getReply(1, 3)]);
 
           // Start round for next tests by adding commitment from 3rd
@@ -1362,8 +1297,8 @@ void main() {
 
           // Get commitment set from event
           final evs = await clients[1].getEvents();
-          final commitments = (evs.last as SignatureNewRoundsEvent)
-            .rounds.first.commitments;
+          final commitments =
+              (evs.last as SignatureNewRoundsEvent).rounds.first.commitments;
 
           // Missing share
           await expectMalicious([getReply(1, 3)]);
@@ -1371,7 +1306,8 @@ void main() {
           // Share unnecessary
           await expectMalicious([
             getReply(
-              1, 1,
+              1,
+              1,
               nonce: part1.nonces,
               commitments: commitments,
             ),
@@ -1387,7 +1323,6 @@ void main() {
               signDetailsOverride: getSignDetails(0),
             ),
           ]);
-
         });
 
         test(
@@ -1400,29 +1335,30 @@ void main() {
         );
 
         Future<void> doMalicious(int i) => expectInvalid(
-          () => ctx.api.submitSignatureReplies(
-            sid: clients[i].sid,
-            reqId: sigsDetails.id,
-            replies: [
-              SignatureReply(
-                // Malicious due to wrong index
-                sigI: 4,
-                nextCommitment: doPart1(i, 0).commitment,
+              () => ctx.api.submitSignatureReplies(
+                sid: clients[i].sid,
+                reqId: sigsDetails.id,
+                replies: [
+                  SignatureReply(
+                    // Malicious due to wrong index
+                    sigI: 4,
+                    nextCommitment: doPart1(i, 0).commitment,
+                  ),
+                ],
               ),
-            ],
-          ),
-        );
+            );
 
         test("can process multiple rounds to success", () async {
-
           final List<List<SignPart1?>> part1s = List.generate(
-            10, (i) => i == 0 ? creatorPart1s : [null, null, null, null],
+            10,
+            (i) => i == 0 ? creatorPart1s : [null, null, null, null],
           );
 
-          final List<List<SigningCommitmentSet?>> commitmentSets
-            = List.generate(
-              10, (i) => [null, null, null, null],
-            );
+          final List<List<SigningCommitmentSet?>> commitmentSets =
+              List.generate(
+            10,
+            (i) => [null, null, null, null],
+          );
 
           void expectAndProcessRounds(
             int i,
@@ -1449,7 +1385,8 @@ void main() {
           }
 
           Future<void> expectAndProcessNewRoundsEvent(
-            int i, List<int> sigIs,
+            int i,
+            List<int> sigIs,
           ) async {
             final evs = await clients[i].getEvents();
             expect(evs, hasLength(1));
@@ -1466,15 +1403,17 @@ void main() {
             return ctx.api.submitSignatureReplies(
               sid: clients[i].sid,
               reqId: sigsDetails.id,
-              replies: sigIs.map(
-                (sigI) => getReply(
-                  i,
-                  sigI,
-                  commitment: part1s[i][sigI]!.commitment,
-                  nonce: thisPart1s[sigI]?.nonces,
-                  commitments: commitmentSets[i][sigI],
-                ),
-              ).toList(),
+              replies: sigIs
+                  .map(
+                    (sigI) => getReply(
+                      i,
+                      sigI,
+                      commitment: part1s[i][sigI]!.commitment,
+                      nonce: thisPart1s[sigI]?.nonces,
+                      commitments: commitmentSets[i][sigI],
+                    ),
+                  )
+                  .toList(),
             );
           }
 
@@ -1491,18 +1430,16 @@ void main() {
           // 2: p=[0,1,2]
           // 3: r=[0,1,2] p=[]
           for (int i = 1; i < 3; i++) {
-
-            final resp = await submit(i, [0,1,2,3]);
+            final resp = await submit(i, [0, 1, 2, 3]);
 
             if (i == 2) {
-              expectNewRoundsResponse(2, resp, [0,1,3]);
+              expectNewRoundsResponse(2, resp, [0, 1, 3]);
               for (int j = 0; j < 2; j++) {
-                await expectAndProcessNewRoundsEvent(j, [0,1,3]);
+                await expectAndProcessNewRoundsEvent(j, [0, 1, 3]);
               }
             } else {
               expect(resp, null);
             }
-
           }
 
           // Only has 0 left as rejector
@@ -1514,17 +1451,17 @@ void main() {
           // 2: r=[0,1,2,3] p=[]
           // 3: r=[0ok,1ok,2] r=[0,1,3] p=[]
           for (int i = 0; i < 2; i++) {
-            expect(await submit(i, [0,1,3]), null);
+            expect(await submit(i, [0, 1, 3]), null);
           }
           // No more rejectors
           expect(reqState.rejectors, isEmpty);
           expectNewRoundsResponse(
             3,
-            await submit(3, [0,1,2,3]),
-            [0,1,2,3],
+            await submit(3, [0, 1, 2, 3]),
+            [0, 1, 2, 3],
           );
           for (int i = 0; i < 2; i++) {
-            await expectAndProcessNewRoundsEvent(i, [0,1,2,3]);
+            await expectAndProcessNewRoundsEvent(i, [0, 1, 2, 3]);
           }
           await expectAndProcessNewRoundsEvent(2, [2]);
 
@@ -1539,14 +1476,15 @@ void main() {
           // 2: r=[0,1ok,2,3ok] r=[1,3,6,7] p=[]
           // 3: r=[0ok,1ok,2] r=[0,1ok,3ok] r=[1,3,8] p=[]
           for (final i in [1, 3]) {
-            await submit(i, [0,1,2,3]);
+            await submit(i, [0, 1, 2, 3]);
           }
           Future<void> newRoundFor1And3(int newId, int sigI) async {
             expectNewRoundsResponse(newId, await submit(newId, [sigI]), [sigI]);
-            for (final i in [1,3]) {
+            for (final i in [1, 3]) {
               await expectAndProcessNewRoundsEvent(i, [sigI]);
             }
           }
+
           await newRoundFor1And3(4, 0);
           await newRoundFor1And3(5, 1);
           await submit(6, [2]);
@@ -1555,7 +1493,7 @@ void main() {
           await newRoundFor1And3(8, 3);
 
           // Malicious 2 has no effect
-          await expectInvalid(() => submit(2, [0,1,2,3]));
+          await expectInvalid(() => submit(2, [0, 1, 2, 3]));
           await ctx.expectNoEventsOrError();
 
           // Complete 0 and 1 with successful share in 1nd round by 0, but do
@@ -1564,11 +1502,11 @@ void main() {
           // 1: r=[0ok,1ok,2] r=[0ok,1ok,3ok] r=[1,3,5] DONE
           // 2: r=[0ok,1ok,2,3ok] r=[1,3,6,7] p=[]
           // 3: r=[0ok,1ok,2] r=[0,1ok,3ok] r=[1,3,8] p=[]
-          await submit(0, [0,1]);
+          await submit(0, [0, 1]);
           await ctx.expectNoEventsOrError();
 
           // Give 6 malicious int total (5 more) without failure
-          Future.wait([5,6,7,8,9].map(doMalicious));
+          Future.wait([5, 6, 7, 8, 9].map(doMalicious));
 
           // Complete 2 and 3 in last round by last remaining good participants:
           // 0,1,3,4
@@ -1577,12 +1515,12 @@ void main() {
           // 1: r=[0ok,1ok,2] r=[0ok,1ok,3ok] r=[1,3,5] DONE
           // 2: r=[0ok,1ok,2,3ok] r=[1ok,3,6,7] r=[0ok,1ok,3ok,4ok] DONE
           // 3: r=[0ok,1ok,2] r=[0ok,1ok,3ok] r=[1,3,8] p=[0] DONE
-          for (final i in [0,1,3,4]) {
-            final resp = await submit(i, i == 0 ? [2, 3] : [0,1,2,3]);
+          for (final i in [0, 1, 3, 4]) {
+            final resp = await submit(i, i == 0 ? [2, 3] : [0, 1, 2, 3]);
             if (i == 4) {
               // New round for 2
               expectNewRoundsResponse(4, resp, [2]);
-              for (final i2 in [0,1,3]) {
+              for (final i2 in [0, 1, 3]) {
                 await expectAndProcessNewRoundsEvent(i2, [2]);
               }
             } else {
@@ -1593,7 +1531,7 @@ void main() {
           // Finalise sig 2 with participants 0,1,3,4 and collect resulting
           // signatures
           late List<cl.SchnorrSignature> sigs;
-          for (final i in [0,1,3,4]) {
+          for (final i in [0, 1, 3, 4]) {
             final resp = await submit(i, [2]);
             if (i == 4) {
               // Response has signatures
@@ -1639,11 +1577,9 @@ void main() {
 
           // Request no longer exists after signatures have been made
           expectSigReqExists(false);
-
         });
 
         test("fails with too many malicious", () async {
-
           await ctx.clearEvents();
 
           // Complete signature 2 so that the max threshold is only 3
@@ -1664,15 +1600,11 @@ void main() {
           }
 
           await expectFailedReq();
-
         });
-
       });
-
     });
 
     group(".shareSecretShare", () {
-
       late List<ServerTestClient> clients;
       late EncryptedKeyShare dummyShare;
 
@@ -1687,39 +1619,37 @@ void main() {
       });
 
       test("invalid request", () async {
+        // Invalid Session ID
+        await expectInvalid(
+          () => ctx.api.shareSecretShare(
+            sid: SessionID(),
+            groupKey: groupPublicKey,
+            encryptedSecrets: {ids.last: dummyShare},
+          ),
+        );
 
-          // Invalid Session ID
-          await expectInvalid(
-            () => ctx.api.shareSecretShare(
-              sid: SessionID(),
-              groupKey: groupPublicKey,
-              encryptedSecrets: { ids.last: dummyShare },
-            ),
-          );
+        Future<void> expectInvalidSecrets(
+          Map<Identifier, EncryptedKeyShare> secrets,
+        ) =>
+            expectInvalid(
+              () => ctx.api.shareSecretShare(
+                sid: clients.first.sid,
+                groupKey: groupPublicKey,
+                encryptedSecrets: secrets,
+              ),
+            );
 
-          Future<void> expectInvalidSecrets(
-            Map<Identifier, EncryptedKeyShare> secrets,
-          ) => expectInvalid(
-            () => ctx.api.shareSecretShare(
-              sid: clients.first.sid,
-              groupKey: groupPublicKey,
-              encryptedSecrets: secrets,
-            ),
-          );
+        // Cannot be empty
+        await expectInvalidSecrets({});
 
-          // Cannot be empty
-          await expectInvalidSecrets({});
+        // Cannot send to self
+        await expectInvalidSecrets({ids.first: dummyShare});
 
-          // Cannot send to self
-          await expectInvalidSecrets({ ids.first: dummyShare });
-
-          // Identifiers must be in group
-          await expectInvalidSecrets({ Identifier.fromUint16(11): dummyShare });
-
+        // Identifiers must be in group
+        await expectInvalidSecrets({Identifier.fromUint16(11): dummyShare});
       });
 
       test("success with ackKeyConstructed", () async {
-
         void expectCompleted(ConstructedKeyEvent event, int who) {
           expect(event.participant, ids[who]);
           expect(event.constructedKey.obj.publicKey, groupPublicKey);
@@ -1728,13 +1658,15 @@ void main() {
 
         Future<void> sendTo(
           int from,
-          Iterable<int> to,
-          { int? expectedCompleted, }
-        ) async {
+          Iterable<int> to, {
+          int? expectedCompleted,
+        }) async {
           final events = await ctx.api.shareSecretShare(
             sid: clients[from].sid,
             groupKey: groupPublicKey,
-            encryptedSecrets: { for (final id in to) ids[id]: dummyShare, },
+            encryptedSecrets: {
+              for (final id in to) ids[id]: dummyShare,
+            },
           );
           if (expectedCompleted == null) {
             expect(events, isEmpty);
@@ -1744,15 +1676,14 @@ void main() {
           }
         }
 
-        Future<void> sendToAll(int from, { int? expectedCompleted }) => sendTo(
-          from,
-          List.generate(10, (i) => i).where((id) => id != from),
-          expectedCompleted: expectedCompleted,
-        );
+        Future<void> sendToAll(int from, {int? expectedCompleted}) => sendTo(
+              from,
+              List.generate(10, (i) => i).where((id) => id != from),
+              expectedCompleted: expectedCompleted,
+            );
 
         // First and second sends to everyone
         for (int from = 0; from < 2; from++) {
-
           await sendToAll(from);
 
           // Expect events to logged in
@@ -1765,7 +1696,6 @@ void main() {
             expect(ev.sender, ids[from]);
             expect(ev.groupKey, groupPublicKey);
           }
-
         }
 
         // Others obtain both on login
@@ -1799,7 +1729,7 @@ void main() {
         // 3rd gives shares to first and last. Returns ConstructedKeyEvent for
         // last. First receives SecretShareEvent.
 
-        await sendTo(2, {0,9}, expectedCompleted: 9);
+        await sendTo(2, {0, 9}, expectedCompleted: 9);
         final ev = await clients.first.getExpectOneEvent<SecretShareEvent>();
         expect(ev.sender, ids[2]);
         expect(ev.groupKey, groupPublicKey);
@@ -1807,9 +1737,7 @@ void main() {
         for (final client in ctx.clients.skip(1)) {
           await client.expectNoEvents();
         }
-
       });
-
     });
 
     test(".ackKeyConstructed invalid request", () async {
@@ -1837,18 +1765,16 @@ void main() {
 
       // Cannot do twice
       Future<void> doMethod() => ctx.api.ackKeyConstructed(
-        sid: client.sid,
-        constructedKey: validSigned,
-      );
+            sid: client.sid,
+            constructedKey: validSigned,
+          );
       await doMethod();
       await expectInvalid(doMethod);
-
     });
 
     test("can shutdown with logged in clients", () async {
       await Future.wait(List.generate(5, (i) => ctx.login(i)));
       await ctx.api.shutdown();
     });
-
   });
 }

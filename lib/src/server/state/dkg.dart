@@ -16,11 +16,10 @@ class DkgRound1State extends DkgRoundState {
 class DkgRound2State extends DkgRoundState {
   final Uint8List expectedHash;
   final List<Identifier> participantsProvided = [];
-  DkgRound2State({ required this.expectedHash });
+  DkgRound2State({required this.expectedHash});
 }
 
 class DkgState implements Expirable {
-
   // Saved across the state so that details are available if round 1 needs to
   // be done again.
   final Signed<NewDkgDetails> details;
@@ -40,5 +39,4 @@ class DkgState implements Expirable {
 
   DkgRound1State get round1 => round as DkgRound1State;
   DkgRound2State get round2 => round as DkgRound2State;
-
 }

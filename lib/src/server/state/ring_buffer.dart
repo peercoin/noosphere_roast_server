@@ -1,6 +1,5 @@
 /// Takes a certain number of [T] objects, retaining the last added objects
 class RingBuffer<T> {
-
   final List<T> buffer = [];
   final int maxSize;
   int next = 0;
@@ -15,7 +14,7 @@ class RingBuffer<T> {
     } else {
       buffer[next] = element;
     }
-    next = (next+1) % maxSize;
+    next = (next + 1) % maxSize;
   }
 
   List<T> flushBuffer() {
@@ -24,5 +23,4 @@ class RingBuffer<T> {
     next = 0;
     return ordered;
   }
-
 }
