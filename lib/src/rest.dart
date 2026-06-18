@@ -56,11 +56,13 @@ Middleware restSseCors({String allowOrigin = '*'}) =>
 class RestWebSocketNoosphereService {
   final ServerApiHandler api;
   final String? allowOrigin;
+  final Logger logger;
 
   RestWebSocketNoosphereService({
     required this.api,
     this.allowOrigin = '*',
-  });
+    Logger? logger,
+  }) : logger = logger ?? api.logger;
 
   Handler get handler {
     final router = Router()
@@ -96,7 +98,8 @@ class RestWebSocketNoosphereService {
   }) =>
       shelf_io.serve(handler, address, port);
 
-  Future<Response> _login(Request request) => _handleJson(request, () async {
+  Future<Response> _login(Request request) =>
+      _handleJson(request, logger, () async {
         final json = await _readJson(request);
         final resp = await api.login(
           groupFingerprint: _fieldBytes(json, 'groupFingerprint'),
@@ -110,6 +113,7 @@ class RestWebSocketNoosphereService {
 
   Future<Response> _respondToChallenge(Request request) => _handleJson(
         request,
+        logger,
         () async {
           final json = await _readJson(request);
           final resp = await api.respondToChallenge(
@@ -123,14 +127,14 @@ class RestWebSocketNoosphereService {
       );
 
   Future<Response> _extendSession(Request request) =>
-      _handleJson(request, () async {
+      _handleJson(request, logger, () async {
         final json = await _readJson(request);
         final resp = await api.extendSession(_sid(_fieldBytes(json, 'sid')));
         return _bytesResponse(resp.toBytes());
       });
 
   Future<Response> _requestNewDkg(Request request) =>
-      _handleEmpty(request, () async {
+      _handleEmpty(request, logger, () async {
         final json = await _readJson(request);
         await api.requestNewDkg(
           sid: _sid(_fieldBytes(json, 'sid')),
@@ -145,7 +149,7 @@ class RestWebSocketNoosphereService {
       });
 
   Future<Response> _rejectDkg(Request request) =>
-      _handleEmpty(request, () async {
+      _handleEmpty(request, logger, () async {
         final json = await _readJson(request);
         await api.rejectDkg(
           sid: _sid(_fieldBytes(json, 'sid')),
@@ -154,7 +158,7 @@ class RestWebSocketNoosphereService {
       });
 
   Future<Response> _submitDkgCommitment(Request request) =>
-      _handleEmpty(request, () async {
+      _handleEmpty(request, logger, () async {
         final json = await _readJson(request);
         await api.submitDkgCommitment(
           sid: _sid(_fieldBytes(json, 'sid')),
@@ -166,7 +170,7 @@ class RestWebSocketNoosphereService {
       });
 
   Future<Response> _submitDkgRound2(Request request) =>
-      _handleEmpty(request, () async {
+      _handleEmpty(request, logger, () async {
         final json = await _readJson(request);
         await api.submitDkgRound2(
           sid: _sid(_fieldBytes(json, 'sid')),
@@ -185,7 +189,7 @@ class RestWebSocketNoosphereService {
       });
 
   Future<Response> _sendDkgAcks(Request request) =>
-      _handleEmpty(request, () async {
+      _handleEmpty(request, logger, () async {
         final json = await _readJson(request);
         await api.sendDkgAcks(
           sid: _sid(_fieldBytes(json, 'sid')),
@@ -196,7 +200,7 @@ class RestWebSocketNoosphereService {
       });
 
   Future<Response> _requestDkgAcks(Request request) =>
-      _handleJson(request, () async {
+      _handleJson(request, logger, () async {
         final json = await _readJson(request);
         final resp = await api.requestDkgAcks(
           sid: _sid(_fieldBytes(json, 'sid')),
@@ -208,7 +212,7 @@ class RestWebSocketNoosphereService {
       });
 
   Future<Response> _requestSignatures(Request request) =>
-      _handleEmpty(request, () async {
+      _handleEmpty(request, logger, () async {
         final json = await _readJson(request);
         await api.requestSignatures(
           sid: _sid(_fieldBytes(json, 'sid')),
@@ -230,7 +234,7 @@ class RestWebSocketNoosphereService {
       });
 
   Future<Response> _rejectSignaturesRequest(Request request) =>
-      _handleEmpty(request, () async {
+      _handleEmpty(request, logger, () async {
         final json = await _readJson(request);
         await api.rejectSignaturesRequest(
           sid: _sid(_fieldBytes(json, 'sid')),
@@ -239,7 +243,7 @@ class RestWebSocketNoosphereService {
       });
 
   Future<Response> _submitSignatureReplies(Request request) =>
-      _handleJson(request, () async {
+      _handleJson(request, logger, () async {
         final json = await _readJson(request);
         final resp = await api.submitSignatureReplies(
           sid: _sid(_fieldBytes(json, 'sid')),
@@ -260,7 +264,7 @@ class RestWebSocketNoosphereService {
       });
 
   Future<Response> _shareSecretShare(Request request) =>
-      _handleJson(request, () async {
+      _handleJson(request, logger, () async {
         final json = await _readJson(request);
         final resp = await api.shareSecretShare(
           sid: _sid(_fieldBytes(json, 'sid')),
@@ -277,7 +281,7 @@ class RestWebSocketNoosphereService {
       });
 
   Future<Response> _ackKeyConstructed(Request request) =>
-      _handleEmpty(request, () async {
+      _handleEmpty(request, logger, () async {
         final json = await _readJson(request);
         await api.ackKeyConstructed(
           sid: _sid(_fieldBytes(json, 'sid')),
@@ -290,19 +294,19 @@ class RestWebSocketNoosphereService {
 
   FutureOr<Response> _fetchEventWebSocket(Request request, String sid) {
     final description = _requestDescription(request);
-    noosphereRoastServerLogger.d("REST $description received");
+    logger.d("REST $description received");
     try {
       final session = api.getSession(_sid(_decodeBytes(sid)));
       final handler = webSocketHandler(
         (WebSocketChannel webSocket, String? _) {
-          noosphereRoastServerLogger.d("REST $description opened");
+          logger.d("REST $description opened");
           final eventSubscription = session.eventController.stream.listen(
-            (event) => webSocket.sink.add(_webSocketEvent(event)),
+            (event) => webSocket.sink.add(_webSocketEvent(event, logger)),
             onDone: () {
               unawaited(webSocket.sink.close(WebSocketStatus.normalClosure));
             },
             onError: (Object e, StackTrace stackTrace) {
-              noosphereRoastServerLogger.e(
+              logger.e(
                 "REST $description event stream failed",
                 error: e,
                 stackTrace: stackTrace,
@@ -317,10 +321,10 @@ class RestWebSocketNoosphereService {
             (_) {},
             onDone: () {
               unawaited(eventSubscription.cancel());
-              noosphereRoastServerLogger.d("REST $description closed");
+              logger.d("REST $description closed");
             },
             onError: (Object e) {
-              noosphereRoastServerLogger.w(
+              logger.w(
                 "REST $description socket failed: $e",
               );
               unawaited(eventSubscription.cancel());
@@ -332,19 +336,19 @@ class RestWebSocketNoosphereService {
       );
       return handler(request);
     } on InvalidRequest catch (e) {
-      noosphereRoastServerLogger.w(
+      logger.w(
         "REST $description rejected: ${e.message}",
       );
       return _jsonResponse({'error': e.message}, status: 400);
     } on FormatException catch (e) {
-      noosphereRoastServerLogger.w(
+      logger.w(
         "REST $description rejected: ${e.message}",
       );
       return _jsonResponse({'error': e.message}, status: 400);
     } on HijackException {
       rethrow;
     } on Exception catch (e, stackTrace) {
-      noosphereRoastServerLogger.e(
+      logger.e(
         "REST $description failed",
         error: e,
         stackTrace: stackTrace,
@@ -365,31 +369,33 @@ class RestSseNoosphereService extends RestWebSocketNoosphereService {
   RestSseNoosphereService({
     required super.api,
     super.allowOrigin,
+    super.logger,
   });
 }
 
 Future<Response> _handleEmpty(
   Request request,
+  Logger logger,
   Future<void> Function() action,
 ) async {
   final description = _requestDescription(request);
-  noosphereRoastServerLogger.d("REST $description received");
+  logger.d("REST $description received");
   try {
     await action();
-    noosphereRoastServerLogger.d("REST $description completed");
+    logger.d("REST $description completed");
     return _jsonResponse({});
   } on InvalidRequest catch (e) {
-    noosphereRoastServerLogger.w(
+    logger.w(
       "REST $description rejected: ${e.message}",
     );
     return _jsonResponse({'error': e.message}, status: 400);
   } on FormatException catch (e) {
-    noosphereRoastServerLogger.w(
+    logger.w(
       "REST $description rejected: ${e.message}",
     );
     return _jsonResponse({'error': e.message}, status: 400);
   } on Exception catch (e, stackTrace) {
-    noosphereRoastServerLogger.e(
+    logger.e(
       "REST $description failed",
       error: e,
       stackTrace: stackTrace,
@@ -400,26 +406,27 @@ Future<Response> _handleEmpty(
 
 Future<Response> _handleJson(
   Request request,
+  Logger logger,
   Future<Response> Function() action,
 ) async {
   final description = _requestDescription(request);
-  noosphereRoastServerLogger.d("REST $description received");
+  logger.d("REST $description received");
   try {
     final response = await action();
-    noosphereRoastServerLogger.d("REST $description completed");
+    logger.d("REST $description completed");
     return response;
   } on InvalidRequest catch (e) {
-    noosphereRoastServerLogger.w(
+    logger.w(
       "REST $description rejected: ${e.message}",
     );
     return _jsonResponse({'error': e.message}, status: 400);
   } on FormatException catch (e) {
-    noosphereRoastServerLogger.w(
+    logger.w(
       "REST $description rejected: ${e.message}",
     );
     return _jsonResponse({'error': e.message}, status: 400);
   } on Exception catch (e, stackTrace) {
-    noosphereRoastServerLogger.e(
+    logger.e(
       "REST $description failed",
       error: e,
       stackTrace: stackTrace,
@@ -498,9 +505,9 @@ List<String> _fieldStringList(Map<String, dynamic> json, String name) {
   }).toList();
 }
 
-String _webSocketEvent(Event event) {
+String _webSocketEvent(Event event, Logger logger) {
   final type = _eventType(event);
-  noosphereRoastServerLogger.d("REST WebSocket sent $type");
+  logger.d("REST WebSocket sent $type");
   return jsonEncode({
     'type': type,
     'data': _encodeBytes(event.toBytes()),

@@ -18,8 +18,12 @@ pb.Bytes _returnWritable(cl.Writable writable) => pb.Bytes(
 
 class FrostNoosphereService extends pb.NoosphereServiceBase {
   final ServerApiHandler api;
+  final Logger logger;
 
-  FrostNoosphereService({required this.api});
+  FrostNoosphereService({
+    required this.api,
+    Logger? logger,
+  }) : logger = logger ?? api.logger;
 
   grpc.Server createServer() => grpc.Server.create(services: [this]);
 
@@ -29,9 +33,9 @@ class FrostNoosphereService extends pb.NoosphereServiceBase {
     StackTrace? stackTrace,
   ]) {
     if (e is InvalidRequest) {
-      noosphereRoastServerLogger.w("gRPC $method rejected: ${e.message}");
+      logger.w("gRPC $method rejected: ${e.message}");
     } else {
-      noosphereRoastServerLogger.e(
+      logger.e(
         "gRPC $method failed",
         error: e,
         stackTrace: stackTrace,
@@ -44,10 +48,10 @@ class FrostNoosphereService extends pb.NoosphereServiceBase {
     String method,
     Future<T> Function() f,
   ) async {
-    noosphereRoastServerLogger.d("gRPC $method received");
+    logger.d("gRPC $method received");
     try {
       final result = await f();
-      noosphereRoastServerLogger.d("gRPC $method completed");
+      logger.d("gRPC $method completed");
       return result;
     } on Exception catch (e, stackTrace) {
       throw _wrapException(method, e, stackTrace);
@@ -108,7 +112,7 @@ class FrostNoosphereService extends pb.NoosphereServiceBase {
       throw _wrapException("fetchEventStream", e, stackTrace);
     }
 
-    noosphereRoastServerLogger.d(
+    logger.d(
       "gRPC fetchEventStream opened for participant ${session.participantId}",
     );
 
@@ -117,7 +121,7 @@ class FrostNoosphereService extends pb.NoosphereServiceBase {
     // Without calling this, the grpc stream may hang and never close.
     final controller = StreamController<Event>(
       onCancel: () {
-        noosphereRoastServerLogger.d(
+        logger.d(
           "gRPC fetchEventStream canceled for participant "
           "${session.participantId}",
         );
@@ -127,7 +131,7 @@ class FrostNoosphereService extends pb.NoosphereServiceBase {
     // When upstream stream is done, cancel this one
     controller.addStream(session.eventController.stream).then(
       (_) {
-        noosphereRoastServerLogger.d(
+        logger.d(
           "gRPC fetchEventStream closed for participant "
           "${session.participantId}",
         );

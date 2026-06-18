@@ -49,7 +49,7 @@ void main(List<String> args) async {
     defaultsTo: "info",
   );
   final argResults = argParser.parse(args);
-  configureNoosphereRoastServerLogging(
+  final logger = createNoosphereRoastServerLogger(
     level: _logLevels[argResults.option("log-level")]!,
   );
   final configFile = argResults.option("config")!;
@@ -60,16 +60,19 @@ void main(List<String> args) async {
   await loadFrosty();
 
   final config = GrpcConfig.fromYaml(configString);
-  noosphereRoastServerLogger.i("Loaded config from $configFile");
-  noosphereRoastServerLogger.i(
+  logger.i("Loaded config from $configFile");
+  logger.i(
     "Group fingerprint is ${bytesToHex(config.server.group.fingerprint)}",
   );
 
-  final apiHandler = SynchronizedServerApiHandler(config: config.server);
+  final apiHandler = SynchronizedServerApiHandler(
+    config: config.server,
+    logger: logger,
+  );
   final service = FrostNoosphereService(api: apiHandler);
   final grpcServer = service.createServer();
   await grpcServer.serve(port: config.port);
-  noosphereRoastServerLogger.i("gRPC server listening on port ${config.port}");
+  logger.i("gRPC server listening on port ${config.port}");
 
   HttpServer? restServer;
   if (restPort != null) {
@@ -81,7 +84,7 @@ void main(List<String> args) async {
     );
     final restAddress = argResults.option("rest-address")!;
     restServer = await restService.serve(address: restAddress, port: restPort);
-    noosphereRoastServerLogger.i(
+    logger.i(
       "REST/WebSocket server listening on $restAddress:${restServer.port}",
     );
   }
@@ -93,7 +96,7 @@ void main(List<String> args) async {
   for (final signal in [ProcessSignal.sigint, ProcessSignal.sigterm]) {
     signal.watch().listen((sig) {
       if (termCompleter.isCompleted) {
-        noosphereRoastServerLogger.w("Exiting immediately");
+        logger.w("Exiting immediately");
         exit(0);
       }
       termCompleter.complete(sig);
@@ -101,7 +104,7 @@ void main(List<String> args) async {
   }
 
   final signal = await termCompleter.future;
-  noosphereRoastServerLogger.i(
+  logger.i(
     "Caught ${signal.name}. Shutting down server.",
   );
 

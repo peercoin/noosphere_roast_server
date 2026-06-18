@@ -46,6 +46,7 @@ class CompletedSignatures implements Expirable {
 }
 
 class ServerState {
+  final Logger logger;
   final challenges = ExpirableMap<AuthChallenge, ChallengeDetails>();
   late final ExpirableMap<SessionID, ClientSession> clientSessions;
   final participantToSession = ExpirableMap<Identifier, ClientSession>();
@@ -60,14 +61,16 @@ class ServerState {
   /// participants
   final Map<cl.ECCompressedPublicKey, KeySharingState> secretShares = {};
 
-  ServerState() {
+  ServerState({
+    Logger? logger,
+  }) : logger = logger ?? createNoosphereRoastServerLogger() {
     clientSessions = ExpirableMap(
       onExpired: (_, session) => onEndSession(session),
     );
   }
 
   void onEndSession(ClientSession session) {
-    noosphereRoastServerLogger.i(
+    logger.i(
       "Participant session ended: ${session.participantId}",
     );
 
@@ -100,7 +103,7 @@ class ServerState {
     final recipients = sessions
         .where((session) => !exclude.contains(session.sessionID))
         .toList();
-    noosphereRoastServerLogger.d(
+    logger.d(
       "Broadcasting ${e.runtimeType} to ${recipients.length}/"
       "${sessions.length} sessions",
     );

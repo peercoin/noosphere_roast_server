@@ -23,14 +23,27 @@ class ServerApiHandler implements ApiRequestInterface {
 
   final ServerConfig config;
   final ServerState state;
+  final Logger logger;
   final DateTime startTime = DateTime.now();
 
-  /// Creates a backend API handler with the [config]. A blank [state] will be
-  /// created if not provided.
+  /// Creates a backend API handler with the [config].
+  ///
+  /// A blank [state] and default [logger] will be created if not provided.
   ServerApiHandler({
-    required this.config,
+    required ServerConfig config,
     ServerState? state,
-  }) : state = state ?? ServerState();
+    Logger? logger,
+  }) : this._(
+          config: config,
+          state: state,
+          logger: logger ?? createNoosphereRoastServerLogger(),
+        );
+
+  ServerApiHandler._({
+    required this.config,
+    required this.logger,
+    ServerState? state,
+  }) : state = state ?? ServerState(logger: logger);
 
   int get _participantN => config.group.participants.length;
 
@@ -89,7 +102,7 @@ class ServerApiHandler implements ApiRequestInterface {
       expiry: expiry,
     );
 
-    noosphereRoastServerLogger.i(
+    logger.i(
       "Issued auth challenge for participant $participantId",
     );
 
@@ -162,7 +175,7 @@ class ServerApiHandler implements ApiRequestInterface {
       });
     }
 
-    noosphereRoastServerLogger.i("Participant logged in: $pid");
+    logger.i("Participant logged in: $pid");
 
     return LoginCompleteResponse(
       id: sessionId,
@@ -278,7 +291,7 @@ class ServerApiHandler implements ApiRequestInterface {
       commitments: commitments,
     );
 
-    noosphereRoastServerLogger.i(
+    logger.i(
       "DKG requested: name=${details.name} creator=${session.participantId} "
       "threshold=${details.threshold}",
     );
@@ -291,7 +304,7 @@ class ServerApiHandler implements ApiRequestInterface {
   Future<void> rejectDkg({required SessionID sid, required String name}) async {
     final participantId = getSession(sid).participantId;
     if (state.nameToDkg.remove(name) != null) {
-      noosphereRoastServerLogger.i(
+      logger.i(
         "DKG rejected: name=$name participant=$participantId",
       );
 
@@ -329,7 +342,7 @@ class ServerApiHandler implements ApiRequestInterface {
       dkg.round = DkgRound2State(
         expectedHash: dkg.details.obj.hashWithCommitments(commitmentSet),
       );
-      noosphereRoastServerLogger.i(
+      logger.i(
         "DKG advanced to round 2: name=$name commitments=${commitments.length}",
       );
     }
@@ -391,7 +404,7 @@ class ServerApiHandler implements ApiRequestInterface {
     if (round.participantsProvided.length == _participantN - 1) {
       // Remove DKG
       state.nameToDkg.remove(name);
-      noosphereRoastServerLogger.i("DKG completed: name=$name");
+      logger.i("DKG completed: name=$name");
       // No details of the key are stored on the server as only the participants
       // can generate the public information at this point.
     } else {
@@ -437,8 +450,7 @@ class ServerApiHandler implements ApiRequestInterface {
     // Do not send events if there are no new ACKs
     if (newAcks.isEmpty) return;
 
-    noosphereRoastServerLogger
-        .i("DKG acknowledgements received: ${newAcks.length}");
+    logger.i("DKG acknowledgements received: ${newAcks.length}");
 
     // Send ACKs to participants, ensuring that their own ACKs aren't sent
     // Do not send to calling participant
@@ -508,7 +520,7 @@ class ServerApiHandler implements ApiRequestInterface {
     }
 
     if (need.isNotEmpty) {
-      noosphereRoastServerLogger.d(
+      logger.d(
         "Requested missing DKG acknowledgements: ${need.length}",
       );
 
@@ -585,7 +597,7 @@ class ServerApiHandler implements ApiRequestInterface {
       sid,
     );
 
-    noosphereRoastServerLogger.i(
+    logger.i(
       "Signatures requested: id=${details.id.toHex()} creator=$pid "
       "signatures=$numSigs",
     );
@@ -603,7 +615,7 @@ class ServerApiHandler implements ApiRequestInterface {
     if (available < maxThreshold) {
       // Cannot sign one of the signatures as threshold is too high
       final id = sigReqState.details.obj.id;
-      noosphereRoastServerLogger.w(
+      logger.w(
         "Signatures request failed: id=${id.toHex()} available=$available "
         "required=$maxThreshold",
       );
@@ -628,7 +640,7 @@ class ServerApiHandler implements ApiRequestInterface {
     if (sigReq.malicious.contains(pid)) return;
 
     sigReq.rejectors.add(pid);
-    noosphereRoastServerLogger.i(
+    logger.i(
       "Signatures request rejected: id=${reqId.toHex()} participant=$pid",
     );
     _checkSigReqFail(sigReq);
@@ -650,7 +662,7 @@ class ServerApiHandler implements ApiRequestInterface {
 
     void throwMalicious(InvalidRequest exp) {
       sigReq.malicious.add(pid);
-      noosphereRoastServerLogger.w(
+      logger.w(
         "Participant marked malicious for signatures request: "
         "id=${reqId.toHex()} participant=$pid reason=${exp.message}",
       );
@@ -811,7 +823,7 @@ class ServerApiHandler implements ApiRequestInterface {
         sid,
       );
 
-      noosphereRoastServerLogger.i(
+      logger.i(
         "Signatures request completed: id=${reqId.toHex()} "
         "signatures=${signatures.length}",
       );
@@ -822,7 +834,7 @@ class ServerApiHandler implements ApiRequestInterface {
     // If there are any new rounds, return them and send events to round
     // participants
     if (newRounds.isNotEmpty) {
-      noosphereRoastServerLogger.d(
+      logger.d(
         "Signature rounds started: id=${reqId.toHex()} "
         "participants=${newRounds.length}",
       );
@@ -880,7 +892,7 @@ class ServerApiHandler implements ApiRequestInterface {
       }
     }
 
-    noosphereRoastServerLogger.i(
+    logger.i(
       "Secret shares received: sender=$pid receivers=${encryptedSecrets.length} "
       "new=$addedShares",
     );
@@ -920,14 +932,14 @@ class ServerApiHandler implements ApiRequestInterface {
     // Send event to other participants
     state.sendEventToOthers(event, sid);
 
-    noosphereRoastServerLogger.i(
+    logger.i(
       "Constructed key acknowledged: participant=$pid",
     );
   }
 
   /// Closes all client session streams
   Future<void> shutdown() {
-    noosphereRoastServerLogger.i(
+    logger.i(
       "Shutting down API handler: sessions=${state.clientSessions.values.length}",
     );
     return Future.wait(

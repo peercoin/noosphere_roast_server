@@ -77,6 +77,9 @@ class _RestTestApi implements ServerApiHandler {
   final sessions = <SessionID, ClientSession>{};
 
   @override
+  final logger = createNoosphereRoastServerLogger();
+
+  @override
   Future<Expiry> extendSession(SessionID sid) async {
     if (!sessions.containsKey(sid)) throw InvalidRequest.noSession();
     return expiry;

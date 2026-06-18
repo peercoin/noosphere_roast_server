@@ -26,14 +26,15 @@ class _ApiCallQueue {
 /// A [ServerApiHandler] that serializes state-mutating API calls.
 ///
 /// Use one shared instance of this class when exposing the same coordinator
-/// through multiple transports, such as gRPC for desktop clients and REST/WebSocket
-/// for web clients.
+/// through multiple transports, such as gRPC for desktop clients and
+/// REST/WebSocket for web clients.
 class SynchronizedServerApiHandler extends ServerApiHandler {
   final _queue = _ApiCallQueue();
 
   SynchronizedServerApiHandler({
     required super.config,
     super.state,
+    super.logger,
   });
 
   @override
