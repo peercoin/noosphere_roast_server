@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:noosphere_roast_server/noosphere_roast_server.dart';
 import 'package:noosphere_roast_server/src/server/state/client_session.dart';
 import 'package:noosphere_roast_server/src/server/state/state.dart';
 import 'package:shelf/shelf.dart';
+import 'package:shelf/shelf_io.dart' as shelf_io;
 import 'package:test/test.dart';
 
 String _b64(List<int> bytes) => base64Encode(bytes);
@@ -33,6 +35,12 @@ Future<Response> _post(
   Map<String, dynamic> body,
 ) async =>
     await handler(_jsonPost(path, body));
+
+Future<HttpServer> _serve(Handler handler) =>
+    shelf_io.serve(handler, 'localhost', 0);
+
+String _wsUrl(HttpServer server, String path) =>
+    'ws://localhost:${server.port}$path';
 
 SessionID _sid([int lastByte = 1]) =>
     SessionID.fromBytes(Uint8List(16)..last = lastByte);
@@ -86,13 +94,13 @@ class _RestTestApi implements ServerApiHandler {
 }
 
 void main() {
-  group('RestSseNoosphereService', () {
+  group('RestWebSocketNoosphereService', () {
     late _RestTestApi api;
     late Handler handler;
 
     setUp(() {
       api = _RestTestApi();
-      handler = RestSseNoosphereService(
+      handler = RestWebSocketNoosphereService(
         api: api,
         allowOrigin: 'https://app.example',
       ).handler;
@@ -113,7 +121,7 @@ void main() {
     });
 
     test('can leave CORS headers to a reverse proxy', () async {
-      final noCorsHandler = RestSseNoosphereService(
+      final noCorsHandler = RestWebSocketNoosphereService(
         api: api,
         allowOrigin: null,
       ).handler;
@@ -155,26 +163,38 @@ void main() {
       );
     });
 
-    test('streams SSE events and cancels the session stream', () async {
-      var canceled = false;
+    test('streams websocket events and cancels the session stream', () async {
+      final canceled = Completer<void>();
       final sid = _sid();
-      final session = _FakeSession(onCancel: () => canceled = true);
+      final session = _FakeSession(
+        onCancel: () {
+          if (!canceled.isCompleted) canceled.complete();
+        },
+      );
       api.sessions[sid] = session;
 
-      final response = await handler(_get(restSseSessionPath(sid)));
-      expect(response.statusCode, 200);
-      expect(response.headers['content-type'], 'text/event-stream');
-      expect(response.headers['cache-control'], 'no-cache');
-      expect(response.headers['x-accel-buffering'], 'no');
+      final server = await _serve(handler);
+      try {
+        final socket = await WebSocket.connect(
+          _wsUrl(server, restWebSocketSessionPath(sid)),
+        );
 
-      session.send(KeepaliveEvent());
+        session.send(KeepaliveEvent());
 
-      final chunk = await response.read().first.timeout(Duration(seconds: 2));
-      expect(utf8.decode(chunk), 'event: keepalive\ndata: \n\n');
-      expect(canceled, true);
+        final message = await socket.first.timeout(Duration(seconds: 2));
+        expect(jsonDecode(message as String), {
+          'type': 'keepalive',
+          'data': '',
+        });
+
+        await socket.close();
+        await canceled.future.timeout(Duration(seconds: 2));
+      } finally {
+        await server.close(force: true);
+      }
     });
 
-    test('streams events sent through server state fanout', () async {
+    test('streams websocket events sent through server state fanout', () async {
       final state = ServerState();
       final creatorSid = _sid(1);
       final receiverSid = _sid(2);
@@ -184,22 +204,51 @@ void main() {
       state.clientSessions[receiverSid] = receiverSession;
       api.sessions[receiverSid] = receiverSession;
 
-      final response = await handler(_get(restSseSessionPath(receiverSid)));
-      expect(response.statusCode, 200);
+      final server = await _serve(handler);
+      try {
+        final socket = await WebSocket.connect(
+          _wsUrl(server, restWebSocketSessionPath(receiverSid)),
+        );
 
-      final event = KeepaliveEvent();
-      state.sendEventToOthers(event, creatorSid);
+        final event = KeepaliveEvent();
+        state.sendEventToOthers(event, creatorSid);
 
-      final chunk = await response.read().first.timeout(Duration(seconds: 2));
-      expect(utf8.decode(chunk), 'event: keepalive\ndata: \n\n');
+        final message = await socket.first.timeout(Duration(seconds: 2));
+        expect(jsonDecode(message as String), {
+          'type': 'keepalive',
+          'data': '',
+        });
+
+        await socket.close();
+      } finally {
+        await server.close(force: true);
+      }
     });
 
-    test('returns a clean error for an unknown SSE session', () async {
-      final response = await handler(_get(restSseSessionPath(_sid(2))));
+    test('returns a clean error for an unknown websocket session', () async {
+      final response = await handler(_get(restWebSocketSessionPath(_sid(2))));
 
       expect(response.statusCode, 400);
       final body = jsonDecode(await response.readAsString());
       expect(body, {'error': InvalidRequest.noSession().message});
+    });
+
+    test('rejects websocket connections from a different origin', () async {
+      final sid = _sid();
+      api.sessions[sid] = _FakeSession();
+
+      final server = await _serve(handler);
+      try {
+        await expectLater(
+          WebSocket.connect(
+            _wsUrl(server, restWebSocketSessionPath(sid)),
+            headers: {'Origin': 'https://other.example'},
+          ),
+          throwsA(isA<WebSocketException>()),
+        );
+      } finally {
+        await server.close(force: true);
+      }
     });
   });
 }

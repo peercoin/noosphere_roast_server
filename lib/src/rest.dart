@@ -9,6 +9,8 @@ import 'package:noosphere_roast_server/src/server/api_handler.dart';
 import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as shelf_io;
 import 'package:shelf_router/shelf_router.dart';
+import 'package:shelf_web_socket/shelf_web_socket.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
 
 Uint8List _bytes(List<int> li) => Uint8List.fromList(li);
 SessionID _sid(List<int> li) => SessionID.fromBytes(_bytes(li));
@@ -34,7 +36,7 @@ Map<String, String> _corsHeaders(String allowOrigin) => {
       'access-control-max-age': '86400',
     };
 
-Middleware restSseCors({
+Middleware restWebSocketCors({
   String allowOrigin = '*',
 }) =>
     (innerHandler) => (request) async {
@@ -47,11 +49,15 @@ Middleware restSseCors({
           return response.change(headers: {...response.headers, ...headers});
         };
 
-class RestSseNoosphereService {
+@Deprecated('Use restWebSocketCors.')
+Middleware restSseCors({String allowOrigin = '*'}) =>
+    restWebSocketCors(allowOrigin: allowOrigin);
+
+class RestWebSocketNoosphereService {
   final ServerApiHandler api;
   final String? allowOrigin;
 
-  RestSseNoosphereService({
+  RestWebSocketNoosphereService({
     required this.api,
     this.allowOrigin = '*',
   });
@@ -72,13 +78,13 @@ class RestSseNoosphereService {
       ..post('/signatures/replies', _submitSignatureReplies)
       ..post('/secret-share', _shareSecretShare)
       ..post('/key-constructed/ack', _ackKeyConstructed)
-      ..get('/sessions/<sid>/events', _fetchEventStream);
+      ..get('/sessions/<sid>/events', _fetchEventWebSocket);
 
     var pipeline = const Pipeline();
     final allowOrigin = this.allowOrigin;
     if (allowOrigin != null) {
       pipeline = pipeline.addMiddleware(
-        restSseCors(allowOrigin: allowOrigin),
+        restWebSocketCors(allowOrigin: allowOrigin),
       );
     }
     return pipeline.addHandler(router.call);
@@ -282,20 +288,49 @@ class RestSseNoosphereService {
         );
       });
 
-  Future<Response> _fetchEventStream(Request request, String sid) async {
+  FutureOr<Response> _fetchEventWebSocket(Request request, String sid) {
     final description = _requestDescription(request);
     noosphereRoastServerLogger.d("REST $description received");
     try {
       final session = api.getSession(_sid(_decodeBytes(sid)));
-      noosphereRoastServerLogger.d("REST $description opened");
-      return Response.ok(
-        session.eventController.stream.map(_sseEvent),
-        headers: {
-          'content-type': 'text/event-stream',
-          'cache-control': 'no-cache',
-          'x-accel-buffering': 'no',
+      final handler = webSocketHandler(
+        (WebSocketChannel webSocket, String? _) {
+          noosphereRoastServerLogger.d("REST $description opened");
+          final eventSubscription = session.eventController.stream.listen(
+            (event) => webSocket.sink.add(_webSocketEvent(event)),
+            onDone: () {
+              unawaited(webSocket.sink.close(WebSocketStatus.normalClosure));
+            },
+            onError: (Object e, StackTrace stackTrace) {
+              noosphereRoastServerLogger.e(
+                "REST $description event stream failed",
+                error: e,
+                stackTrace: stackTrace,
+              );
+              unawaited(
+                webSocket.sink.close(WebSocketStatus.internalServerError),
+              );
+            },
+            cancelOnError: true,
+          );
+          webSocket.stream.listen(
+            (_) {},
+            onDone: () {
+              unawaited(eventSubscription.cancel());
+              noosphereRoastServerLogger.d("REST $description closed");
+            },
+            onError: (Object e) {
+              noosphereRoastServerLogger.w(
+                "REST $description socket failed: $e",
+              );
+              unawaited(eventSubscription.cancel());
+            },
+            cancelOnError: true,
+          );
         },
+        allowedOrigins: _webSocketAllowedOrigins,
       );
+      return handler(request);
     } on InvalidRequest catch (e) {
       noosphereRoastServerLogger.w(
         "REST $description rejected: ${e.message}",
@@ -306,6 +341,8 @@ class RestSseNoosphereService {
         "REST $description rejected: ${e.message}",
       );
       return _jsonResponse({'error': e.message}, status: 400);
+    } on HijackException {
+      rethrow;
     } on Exception catch (e, stackTrace) {
       noosphereRoastServerLogger.e(
         "REST $description failed",
@@ -315,6 +352,20 @@ class RestSseNoosphereService {
       return _jsonResponse({'error': 'Internal server error'}, status: 500);
     }
   }
+
+  Iterable<String>? get _webSocketAllowedOrigins {
+    final allowOrigin = this.allowOrigin;
+    if (allowOrigin == null || allowOrigin == '*') return null;
+    return [allowOrigin];
+  }
+}
+
+@Deprecated('Use RestWebSocketNoosphereService.')
+class RestSseNoosphereService extends RestWebSocketNoosphereService {
+  RestSseNoosphereService({
+    required super.api,
+    super.allowOrigin,
+  });
 }
 
 Future<Response> _handleEmpty(
@@ -447,13 +498,13 @@ List<String> _fieldStringList(Map<String, dynamic> json, String name) {
   }).toList();
 }
 
-List<int> _sseEvent(Event event) {
+String _webSocketEvent(Event event) {
   final type = _eventType(event);
-  noosphereRoastServerLogger.d("REST SSE sent $type");
-  return utf8.encode(
-    'event: $type\n'
-    'data: ${_encodeBytes(event.toBytes())}\n\n',
-  );
+  noosphereRoastServerLogger.d("REST WebSocket sent $type");
+  return jsonEncode({
+    'type': type,
+    'data': _encodeBytes(event.toBytes()),
+  });
 }
 
 String _eventType(Event event) => switch (event) {
@@ -473,5 +524,8 @@ String _eventType(Event event) => switch (event) {
       KeepaliveEvent() => 'keepalive',
     };
 
-String restSseSessionPath(SessionID sid) =>
+String restWebSocketSessionPath(SessionID sid) =>
     '/sessions/${_encodeUrlBytes(sid.n)}/events';
+
+@Deprecated('Use restWebSocketSessionPath.')
+String restSseSessionPath(SessionID sid) => restWebSocketSessionPath(sid);

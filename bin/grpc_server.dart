@@ -24,16 +24,16 @@ void main(List<String> args) async {
   );
   argParser.addOption(
     "rest-port",
-    help: "Optional REST/SSE port for browser clients",
+    help: "Optional REST/WebSocket port for browser clients",
   );
   argParser.addOption(
     "rest-address",
-    help: "REST/SSE bind address",
+    help: "REST/WebSocket bind address",
     defaultsTo: "localhost",
   );
   argParser.addOption(
     "rest-allow-origin",
-    help: "CORS Access-Control-Allow-Origin value for REST/SSE clients",
+    help: "CORS Access-Control-Allow-Origin value for REST/WebSocket clients",
     defaultsTo: "*",
   );
   argParser.addFlag(
@@ -73,7 +73,7 @@ void main(List<String> args) async {
 
   HttpServer? restServer;
   if (restPort != null) {
-    final restService = RestSseNoosphereService(
+    final restService = RestWebSocketNoosphereService(
       api: apiHandler,
       allowOrigin: argResults.flag("rest-disable-cors")
           ? null
@@ -82,7 +82,7 @@ void main(List<String> args) async {
     final restAddress = argResults.option("rest-address")!;
     restServer = await restService.serve(address: restAddress, port: restPort);
     noosphereRoastServerLogger.i(
-      "REST/SSE server listening on $restAddress:${restServer.port}",
+      "REST/WebSocket server listening on $restAddress:${restServer.port}",
     );
   }
 

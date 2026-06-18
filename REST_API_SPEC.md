@@ -1,6 +1,6 @@
-# Noosphere ROAST Server REST/SSE API
+# Noosphere ROAST Server REST/WebSocket API
 
-This specification is for implementing a frontend REST/SSE adapter for the
+This specification is for implementing a frontend REST/WebSocket adapter for the
 Noosphere ROAST server. The same frontend may already support the gRPC endpoint;
 reuse the same Noosphere domain serializers and parsers where possible.
 
@@ -83,7 +83,7 @@ Response:
 ```
 
 Use the decoded `LoginCompleteResponse.id` as the session id for later calls
-and SSE.
+and the event websocket.
 
 ### POST /extend-session
 
@@ -325,7 +325,7 @@ Response:
 {}
 ```
 
-## SSE Event Stream
+## WebSocket Event Stream
 
 Open after login:
 
@@ -336,21 +336,20 @@ GET /sessions/<sid>/events
 `<sid>` is the raw `SessionID.n` bytes encoded as URL-safe base64 with padding
 removed.
 
-Response headers include:
+Open this endpoint as a websocket. Use `ws://` for plain HTTP deployments and
+`wss://` when the REST server is served over HTTPS.
 
-```text
-content-type: text/event-stream
-cache-control: no-cache
-x-accel-buffering: no
+Each websocket message is a JSON text frame:
+
+```json
+{
+  "type": "dkg_commitment",
+  "data": "<base64 Event bytes>"
+}
 ```
 
-Each SSE message:
-
-```text
-event: <event-type>
-data: <base64 Event bytes>
-
-```
+`type` is the event name. `data` is the matching Noosphere `Event.toBytes()`
+payload encoded as base64.
 
 Event type mapping:
 
@@ -380,8 +379,8 @@ adapter. Most methods should be thin wrappers:
 2. Base64 encode those bytes into the documented JSON fields.
 3. `POST` the JSON request.
 4. Decode returned `data` bytes back into the same domain response classes.
-5. For SSE, route by the `event` name and parse `data` as the matching Event
-   bytes.
+5. For websocket events, route by the JSON `type` value and parse `data` as the
+   matching Event bytes.
 
 The REST transport does not replace client-side protocol logic. DKG,
 signature-round, authentication, and key-sharing behavior should remain the

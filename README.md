@@ -17,7 +17,7 @@ dart run noosphere_roast_server:grpc_server \
   --log-level debug
 ```
 
-REST/SSE can be enabled for browser clients with `--rest-port`:
+REST/WebSocket can be enabled for browser clients with `--rest-port`:
 
 ```sh
 dart run noosphere_roast_server:grpc_server \
@@ -28,13 +28,13 @@ dart run noosphere_roast_server:grpc_server \
 
 `--rest-allow-origin '*'` is convenient for local testing, but production
 deployments should set `--rest-allow-origin` to the exact frontend origin that
-will access the REST/SSE API, for example `https://app.example.com`.
+will access the REST/WebSocket API, for example `https://app.example.com`.
 
-Use `--rest-address 0.0.0.0` when the REST/SSE listener must be reachable from
+Use `--rest-address 0.0.0.0` when the REST/WebSocket listener must be reachable from
 outside the process namespace, such as from a container port mapping. The
-default REST/SSE bind address is `localhost`.
+default REST/WebSocket bind address is `localhost`.
 
-The REST/SSE API shape is documented in [REST_API_SPEC.md](REST_API_SPEC.md).
+The REST/WebSocket API shape is documented in [REST_API_SPEC.md](REST_API_SPEC.md).
 
 ## Podman / Docker
 
@@ -70,8 +70,8 @@ podman run --rm \
   noosphere-roast-server
 ```
 
-The container starts both gRPC and REST/SSE by default. gRPC listens on the port
-from the YAML config, or `50051` when `port` is omitted. REST/SSE listens on
+The container starts both gRPC and REST/WebSocket by default. gRPC listens on the port
+from the YAML config, or `50051` when `port` is omitted. REST/WebSocket listens on
 container port `8080`.
 
 Port mapping syntax is `host_port:container_port`. If the YAML config says
@@ -94,7 +94,7 @@ podman run --rm \
   /app/config.yaml --rest-address 0.0.0.0 --rest-port 8080
 ```
 
-### REST/SSE With CORS
+### REST/WebSocket With CORS
 
 For local testing, allow any browser origin and enable debug logs:
 
@@ -139,7 +139,7 @@ podman run --rm \
   --log-level info
 ```
 
-REST/SSE on a dedicated API hostname:
+REST/WebSocket on a dedicated API hostname:
 
 ```caddyfile
 api.example.com {
@@ -169,19 +169,19 @@ app.example.com {
 }
 ```
 
-### Ngrok For REST/SSE Testing
+### Ngrok For REST/WebSocket Testing
 
-Expose the REST/SSE port, not the gRPC port:
+Expose the REST/WebSocket port, not the gRPC port:
 
 ```sh
 ngrok http 8080
 ```
 
-Use the printed HTTPS URL as the REST base URL in the frontend. The SSE stream
-will be under:
+Use the printed HTTPS URL as the REST base URL in the frontend. The websocket
+event stream will be under:
 
 ```text
-https://<ngrok-host>/sessions/<sid>/events
+wss://<ngrok-host>/sessions/<sid>/events
 ```
 
 ### Logging
