@@ -445,7 +445,7 @@ void main() {
 
       test("invalid request", () async {
         await expectInvalid(
-            () => ctx.api.rejectDkg(sid: SessionID(), name: "123"));
+            () => ctx.api.rejectDkg(sid: SessionID(), name: "123"),);
       });
 
       test("success", () async {
@@ -849,7 +849,7 @@ void main() {
           () => ctx.api.requestDkgAcks(
             sid: SessionID(),
             requests: {
-              getReq({0})
+              getReq({0}),
             },
           ),
         );
@@ -869,7 +869,7 @@ void main() {
           () => ctx.api.requestDkgAcks(
             sid: ctx.clients.first.sid,
             requests: {
-              getReq({0})
+              getReq({0}),
             },
           ),
         );
@@ -917,7 +917,7 @@ void main() {
           // Request only what the server has
           requests: {
             getReq({1, 2}),
-            getReq({1}, altKey)
+            getReq({1}, altKey),
           },
         );
         expect(haveAcks, toHave);

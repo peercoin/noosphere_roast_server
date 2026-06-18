@@ -267,7 +267,7 @@ void main() {
             tcs.take(2).map((tc) => tc.client.shareKeySecret(groupKey)),
           );
           await Future.wait(
-              tcs.take(9).map((tc) => tc.waitForKeyConstructed()));
+              tcs.take(9).map((tc) => tc.waitForKeyConstructed()),);
 
           // Last logs in and obtains key
           await reloginLast();

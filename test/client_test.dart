@@ -1110,7 +1110,7 @@ void main() {
         await loginWithOwnAck(0),
         DkgAckRequestEvent(
           {
-            DkgAckRequest(ids: {badId}, groupPublicKey: groupPublicKey)
+            DkgAckRequest(ids: {badId}, groupPublicKey: groupPublicKey),
           },
         ),
       );
@@ -1588,7 +1588,7 @@ void main() {
             ...badNewRounds.map((nre) => [nre]),
             // Missing request
             [
-              SignatureNewRoundsEvent(reqId: missingReqId, rounds: [validRound])
+              SignatureNewRoundsEvent(reqId: missingReqId, rounds: [validRound]),
             ],
             // Duplicate request
             [validEv, validEv],
@@ -1815,7 +1815,7 @@ void main() {
               // Only one sig, or incorrect sig for second
               final sigs in [
             [validFirstSig],
-            [validFirstSig, validFirstSig]
+            [validFirstSig, validFirstSig],
           ]) {
             await expectBadEventRelogin(
               0,
