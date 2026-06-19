@@ -1588,7 +1588,10 @@ void main() {
             ...badNewRounds.map((nre) => [nre]),
             // Missing request
             [
-              SignatureNewRoundsEvent(reqId: missingReqId, rounds: [validRound]),
+              SignatureNewRoundsEvent(
+                reqId: missingReqId,
+                rounds: [validRound],
+              ),
             ],
             // Duplicate request
             [validEv, validEv],

@@ -445,7 +445,8 @@ void main() {
 
       test("invalid request", () async {
         await expectInvalid(
-            () => ctx.api.rejectDkg(sid: SessionID(), name: "123"),);
+          () => ctx.api.rejectDkg(sid: SessionID(), name: "123"),
+        );
       });
 
       test("success", () async {
