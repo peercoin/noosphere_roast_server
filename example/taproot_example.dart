@@ -16,7 +16,6 @@ int getCommandLineInt(String prompt, int min, int max) {
 }
 
 class EventCompleters {
-
   final gotDkg = Completer<void>();
   final gotSigsReq = Completer<void>();
   final signature = Completer<cl.SchnorrSignature>();
@@ -31,7 +30,8 @@ class EventCompleters {
             gotSigsReq.complete();
           case SignaturesCompleteClientEvent():
             signature.complete(event.signatures.first);
-          case _: break;
+          case _:
+            break;
         }
       },
       onError: (Object err) {
@@ -40,7 +40,6 @@ class EventCompleters {
       },
     );
   }
-
 }
 
 const maxParticipants = 1000;
@@ -48,19 +47,21 @@ const port = 13543;
 const String keyName = "example_key";
 
 void main() async {
-
   await loadFrosty();
 
   final nParticipants = getCommandLineInt(
-    "Number of participants", 2, maxParticipants,
+    "Number of participants",
+    2,
+    maxParticipants,
   );
   final threshold = getCommandLineInt("Threshold", 2, nParticipants);
 
   print("Creating server");
 
-  final ids = List.generate(nParticipants, (i) => Identifier.fromUint16(i+1));
+  final ids = List.generate(nParticipants, (i) => Identifier.fromUint16(i + 1));
   final participantKeys = List.generate(
-    nParticipants, (i) => cl.ECPrivateKey.generate(),
+    nParticipants,
+    (i) => cl.ECPrivateKey.generate(),
   );
 
   final groupConfig = GroupConfig(
@@ -105,9 +106,11 @@ void main() async {
       ),
     ),
   );
-  final clientCompleters = clients.map(
-    (client) => EventCompleters(client.events),
-  ).toList();
+  final clientCompleters = clients
+      .map(
+        (client) => EventCompleters(client.events),
+      )
+      .toList();
 
   print("Creating $threshold-of-$nParticipants key");
 
@@ -161,10 +164,12 @@ void main() async {
 
   final taproot = cl.Taproot(internalKey: derivedPubkey);
   final testnetAddr = cl.P2TRAddress.fromTaproot(
-    taproot, hrp: cl.Network.testnet.bech32Hrp,
+    taproot,
+    hrp: cl.Network.testnet.bech32Hrp,
   );
   final mainnetAddr = cl.P2TRAddress.fromTaproot(
-    taproot, hrp: cl.Network.mainnet.bech32Hrp,
+    taproot,
+    hrp: cl.Network.mainnet.bech32Hrp,
   );
   print("Testnet Taproot address: $testnetAddr");
   print("Mainnet Taproot address: $mainnetAddr");
@@ -231,8 +236,8 @@ void main() async {
   );
   await Future.wait(
     clients.skip(1).map(
-      (client) => client.acceptSignaturesRequest(requestDetails.id),
-    ),
+          (client) => client.acceptSignaturesRequest(requestDetails.id),
+        ),
   );
 
   // Wait for signature
@@ -255,5 +260,4 @@ void main() async {
 
   // Recommended to use exit() to protect against gRPC hanging
   exit(0);
-
 }

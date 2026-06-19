@@ -5,7 +5,6 @@ import 'package:coinlib/coinlib.dart';
 import 'package:noosphere_roast_server/noosphere_roast_server.dart';
 
 void main(List<String> args) async {
-
   final argParser = ArgParser();
   argParser.addOption(
     "config",
@@ -50,5 +49,4 @@ void main(List<String> args) async {
   await grpcServer.shutdown();
 
   exit(0);
-
 }

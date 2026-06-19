@@ -3,18 +3,18 @@ import 'package:noosphere_roast_server/noosphere_roast_server.dart';
 import 'data.dart';
 import 'test_keys.dart';
 
-ParticipantKeyInfo getParticipantKeyInfo({ int i = 0, int? tweak }) {
+ParticipantKeyInfo getParticipantKeyInfo({int i = 0, int? tweak}) {
   final key = ParticipantKeyInfo.fromHex(keyInfoHex[i]);
   return tweak == null ? key : key.tweak(Uint8List(32)..last = tweak)!;
 }
 
-AggregateKeyInfo getAggregateKeyInfo({ int? tweak })
-  => getParticipantKeyInfo(i: 0, tweak: tweak).aggregate;
+AggregateKeyInfo getAggregateKeyInfo({int? tweak}) =>
+    getParticipantKeyInfo(i: 0, tweak: tweak).aggregate;
 
 List<ParticipantKeyInfo> generateNewKey(int threshold) {
-
   final part1s = List.generate(
-    10, (i) => DkgPart1(identifier: ids[i], threshold: threshold, n: 10),
+    10,
+    (i) => DkgPart1(identifier: ids[i], threshold: threshold, n: 10),
   );
 
   final commitmentSet = DkgCommitmentSet(
@@ -31,9 +31,10 @@ List<ParticipantKeyInfo> generateNewKey(int threshold) {
   );
 
   final shares = List.generate(
-    10, (i) => {
+    10,
+    (i) => {
       for (int j = 0; j < 10; j++)
-        if (j != i) ids[j] : part2s[j].sharesToGive[ids[i]]!,
+        if (j != i) ids[j]: part2s[j].sharesToGive[ids[i]]!,
     },
   );
 
@@ -46,37 +47,36 @@ List<ParticipantKeyInfo> generateNewKey(int threshold) {
       receivedShares: shares[i],
     ).participantInfo,
   );
-
 }
 
-SignDetails getSignDetails([ int? tweak ]) => SignDetails.keySpend(
-  message: Uint8List(32)..last = tweak ?? 0,
-);
+SignDetails getSignDetails([int? tweak]) => SignDetails.keySpend(
+      message: Uint8List(32)..last = tweak ?? 0,
+    );
 
-SingleSignatureDetails getSingleSigDetails({ int? tweak })
-  => SingleSignatureDetails(
-    signDetails: getSignDetails(tweak),
-    groupKey: getAggregateKeyInfo(tweak: tweak).groupKey,
-    hdDerivation: [],
-  );
+SingleSignatureDetails getSingleSigDetails({int? tweak}) =>
+    SingleSignatureDetails(
+      signDetails: getSignDetails(tweak),
+      groupKey: getAggregateKeyInfo(tweak: tweak).groupKey,
+      hdDerivation: [],
+    );
 
 SignaturesRequestDetails getSignaturesDetails({
   List<int> singleSigTweaks = const [0],
   SignatureMetadata? metadata,
   Expiry? expiry,
-}) => SignaturesRequestDetails(
-  requiredSigs: [
-    for (final tweak in singleSigTweaks) getSingleSigDetails(tweak: tweak),
-  ],
-  expiry: expiry ?? futureExpiry,
-);
+}) =>
+    SignaturesRequestDetails(
+      requiredSigs: [
+        for (final tweak in singleSigTweaks) getSingleSigDetails(tweak: tweak),
+      ],
+      expiry: expiry ?? futureExpiry,
+    );
 
-SignPart1 getSignPart1({ int i = 0, int? tweak }) => SignPart1(
-  privateShare: getParticipantKeyInfo(i: i, tweak: tweak).private.share,
-);
+SignPart1 getSignPart1({int i = 0, int? tweak}) => SignPart1(
+      privateShare: getParticipantKeyInfo(i: i, tweak: tweak).private.share,
+    );
 
 SignPart2 dummyPart2() {
-
   final part1s = List.generate(2, (i) => getSignPart1(i: i));
 
   return SignPart2(
@@ -84,9 +84,8 @@ SignPart2 dummyPart2() {
     details: getSignDetails(),
     ourNonces: part1s.first.nonces,
     commitments: SigningCommitmentSet(
-      { for (int i = 0; i < 2; i++) ids[i]: part1s[i].commitment },
+      {for (int i = 0; i < 2; i++) ids[i]: part1s[i].commitment},
     ),
     info: getParticipantKeyInfo().signing,
   );
-
 }

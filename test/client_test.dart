@@ -16,7 +16,6 @@ import 'test_keys.dart';
 
 void main() {
   group("Client", () {
-
     late final Signed<NewDkgDetails> dkgDetails;
     late final List<DkgPart1> dummyPart1s;
     late final DkgCommitmentSet dummyCommitmentSet;
@@ -39,8 +38,9 @@ void main() {
     setUp(() => ctx = TestContext());
 
     Future<void> expectMisbehaviour(void Function() f) => expectLater(
-      f, throwsA(isA<ServerMisbehaviour>()),
-    );
+          f,
+          throwsA(isA<ServerMisbehaviour>()),
+        );
 
     final List<TestClient> clientsToLogout = [];
     tearDown(() async {
@@ -52,10 +52,9 @@ void main() {
 
     Future<TestClient> login(
       int i, {
-        InMemoryClientStorage? storage,
-        void Function()? onDisconnect,
-      }
-    ) async {
+      InMemoryClientStorage? storage,
+      void Function()? onDisconnect,
+    }) async {
       final client = await TestClient.login(
         ctx.api,
         i,
@@ -67,8 +66,8 @@ void main() {
     }
 
     Future<List<TestClient>> loginMany(int n) => Future.wait(
-      List.generate(n, (i) => login(i)),
-    );
+          List.generate(n, (i) => login(i)),
+        );
 
     void sendEventToClient(TestClient tc, Event ev) {
       final clientState = ctx.api.state.clientSessions.values.firstWhere(
@@ -89,28 +88,32 @@ void main() {
     }
 
     DkgRound2ShareEvent getRound2ShareEvent(
-      DkgCommitmentSet commitments, int sender, int receiver,
-      DkgPart1 part1, Uint8List commonHash,
-      { String? altName, }
-    ) => DkgRound2ShareEvent(
-      name: altName ?? "123",
-      commitmentSetSignature: cl.SchnorrSignature.sign(
-        getPrivkey(sender), commonHash,
-      ),
-      sender: ids[sender],
-      secret: DkgEncryptedSecret.encrypt(
-        secretShare: DkgPart2(
-          identifier: ids[sender],
-          round1Secret: part1.secret,
-          commitments: commitments,
-        ).sharesToGive[ids[receiver]]!,
-        recipientKey: getPrivkey(receiver).pubkey,
-        senderKey: getPrivkey(sender),
-      ),
-    );
+      DkgCommitmentSet commitments,
+      int sender,
+      int receiver,
+      DkgPart1 part1,
+      Uint8List commonHash, {
+      String? altName,
+    }) =>
+        DkgRound2ShareEvent(
+          name: altName ?? "123",
+          commitmentSetSignature: cl.SchnorrSignature.sign(
+            getPrivkey(sender),
+            commonHash,
+          ),
+          sender: ids[sender],
+          secret: DkgEncryptedSecret.encrypt(
+            secretShare: DkgPart2(
+              identifier: ids[sender],
+              round1Secret: part1.secret,
+              commitments: commitments,
+            ).sharesToGive[ids[receiver]]!,
+            recipientKey: getPrivkey(receiver).pubkey,
+            senderKey: getPrivkey(sender),
+          ),
+        );
 
     test("can login and keep track of online participants", () async {
-
       // Login 2 clients before creating Client object
       await ctx.multiLogin(2);
 
@@ -130,6 +133,7 @@ void main() {
         expect(dkgRequest.completed, commitmentIds);
         expect(client.acceptedDkgs, isEmpty);
       }
+
       expectRound1Dkg({ids[0], ids[1]});
 
       // Login two more clients and expect an event
@@ -145,9 +149,11 @@ void main() {
       expect(client.onlineParticipants, {ids[0], ids[1], ids[3], ids[4]});
 
       // Logout client
-      ctx.api.state.clientSessions.values.firstWhere(
-        (v) => v.participantId == ids[0],
-      ).expiry = Expiry(Duration(minutes: -1));
+      ctx.api.state.clientSessions.values
+          .firstWhere(
+            (v) => v.participantId == ids[0],
+          )
+          .expiry = Expiry(Duration(minutes: -1));
       ctx.api.state.clientSessions.values; // Will expire
 
       {
@@ -162,7 +168,6 @@ void main() {
 
       // Round 1 DKG loses commitment from logged out participant
       expectRound1Dkg({ids[1]});
-
     });
 
     test("logout old client object if re-login", () async {
@@ -173,7 +178,6 @@ void main() {
     });
 
     test("handles multiple logouts immediately", () async {
-
       final tcs = await Future.wait(List.generate(6, (i) => login(i)));
       await tcs.first.expectOnlyLoginEvents();
 
@@ -183,19 +187,17 @@ void main() {
       final evs = await tcs.first.evCollector.getEvents();
       expect(evs, hasLength(5));
       expect(evs, everyElement(isA<ParticipantStatusClientEvent>()));
-
     });
 
     group("handles login misbehaviour", () {
-
       void expectLoginMisbehaviour() => expectMisbehaviour(
-        () => Client.login(
-          config: getClientConfig(0),
-          api: ctx.api,
-          store: InMemoryClientStorage(),
-          getPrivateKey: (_) async => getPrivkey(0),
-        ),
-      );
+            () => Client.login(
+              config: getClientConfig(0),
+              api: ctx.api,
+              store: InMemoryClientStorage(),
+              getPrivateKey: (_) async => getPrivkey(0),
+            ),
+          );
 
       test("online participant not in config", () {
         final mockSessionId = SessionID();
@@ -241,13 +243,12 @@ void main() {
       });
 
       test("duplicate DKG", () {
-        ctx.api.state.nameToDkg["one"]
-          = ctx.api.state.nameToDkg["two"]
-          = DkgState(
-            details: dkgDetails,
-            creator: ids.first,
-            commitments: [],
-          );
+        ctx.api.state.nameToDkg["one"] =
+            ctx.api.state.nameToDkg["two"] = DkgState(
+          details: dkgDetails,
+          creator: ids.first,
+          commitments: [],
+        );
         expectLoginMisbehaviour();
       });
 
@@ -256,16 +257,14 @@ void main() {
         final sigsDetails2 = getSignaturesDetails(
           singleSigTweaks: [1],
         );
-        ctx.api.state.sigRequests[sigsDetails1.id]
-          = ctx.api.state.sigRequests[sigsDetails2.id]
-          = SignaturesCoordinationState(
-            details: signObject(sigsDetails1),
-            creator: ids.first,
-            keys: {getAggregateKeyInfo()},
-          );
+        ctx.api.state.sigRequests[sigsDetails1.id] = ctx.api.state
+            .sigRequests[sigsDetails2.id] = SignaturesCoordinationState(
+          details: signObject(sigsDetails1),
+          creator: ids.first,
+          keys: {getAggregateKeyInfo()},
+        );
         expectLoginMisbehaviour();
       });
-
     });
 
     test("does not receive events after logout", () async {
@@ -277,7 +276,6 @@ void main() {
     });
 
     test("handles incorrect participant login event", () async {
-
       await expectBadEvent(
         await login(0),
         ParticipantStatusEvent(id: badId, loggedIn: true),
@@ -288,7 +286,6 @@ void main() {
         await login(0),
         ParticipantStatusEvent(id: ids.first, loggedIn: true),
       );
-
     });
 
     test("handles error made on server stream and disconnects", () async {
@@ -302,7 +299,6 @@ void main() {
     });
 
     test("requestDkg success", () async {
-
       var tc1 = await login(0);
       var tc2 = await login(1);
       await tc1.expectOnlyLoginEvents();
@@ -313,12 +309,12 @@ void main() {
       expect(tc1.client.dkgExists("123"), true);
 
       void expectProgress(
-        DkgInProgress progress,
-        [ Set<Identifier>? completed, ]
-      ) {
+        DkgInProgress progress, [
+        Set<Identifier>? completed,
+      ]) {
         expect(progress.creator, ids.first);
         expect(progress.stage, DkgStage.round1);
-        expect(progress.completed, completed ?? { ids.first });
+        expect(progress.completed, completed ?? {ids.first});
         expect(progress.details.threshold, 10);
       }
 
@@ -349,21 +345,18 @@ void main() {
       // Both clients lose acceptance
       expectDkg(tc1.client, false, false);
       expectDkg(tc2.client, false, false);
-
     });
 
     test("requestDkg failure", () async {
-
       final TestClient(:client) = await login(0);
 
       final existingDetails = getDkgDetails(name: "exists");
       await client.requestDkg(existingDetails);
 
-      Future<void> expectFail(NewDkgDetails details)
-        => expectLater(
-          () => client.requestDkg(details),
-          throwsArgumentError,
-        );
+      Future<void> expectFail(NewDkgDetails details) => expectLater(
+            () => client.requestDkg(details),
+            throwsArgumentError,
+          );
 
       for (final duration in [
         Duration(minutes: 29, seconds: 59),
@@ -374,11 +367,9 @@ void main() {
 
       await expectFail(existingDetails);
       await expectFail(getDkgDetails(threshold: 11));
-
     });
 
     Future<void> expectNoRaceCondition(Future<void> Function() f) async {
-
       final futures = List.generate(20, (_) => f());
 
       int argumentErrors = 0;
@@ -390,7 +381,6 @@ void main() {
         }
       }
       expect(argumentErrors, 19);
-
     }
 
     test("requestDkg race condition", () async {
@@ -401,7 +391,6 @@ void main() {
     });
 
     test("handles incorrect DKG request event", () async {
-
       Future<void> expectBadDkg({
         Signed<NewDkgDetails>? details,
         Identifier? creator,
@@ -441,11 +430,9 @@ void main() {
           getDkgDetails(expiry: Expiry(Duration(minutes: -2, seconds: -1))),
         ),
       );
-
     });
 
     test("DKG expiry is clamped", () async {
-
       final TestClient(:client, :evCollector) = await login(1);
 
       final reqExp = Expiry(Duration(days: 8));
@@ -474,11 +461,9 @@ void main() {
         ev.progress.expiry.time,
         client.dkgRequests.first.expiry.time,
       );
-
     });
 
     test("DKGs can be replaced with same name", () async {
-
       final tc = await login(5);
 
       final ev1 = NewDkgEvent(
@@ -497,13 +482,12 @@ void main() {
       await tc.evCollector.getExpectOneEvent<UpdatedDkgClientEvent>();
 
       ctx.api.state.sendEventToAll(ev2);
-      final ev = await tc.evCollector
-        .getExpectOneEvent<UpdatedDkgClientEvent>();
+      final ev =
+          await tc.evCollector.getExpectOneEvent<UpdatedDkgClientEvent>();
       expect(ev.progress.details.name, "123");
       expect(ev.progress.creator, ids[1]);
       expect(tc.client.dkgRequests, hasLength(1));
       expect(tc.client.dkgRequests.first.creator, ids[1]);
-
     });
 
     test("ignore DKG that doesn't exist", () async {
@@ -513,11 +497,10 @@ void main() {
     });
 
     test("DKGs can be rejected", () async {
-
-      final TestClient(client: client1, evCollector: evCollector1)
-        = await login(0);
-      final TestClient(client: client2, evCollector: evCollector2)
-        = await login(1);
+      final TestClient(client: client1, evCollector: evCollector1) =
+          await login(0);
+      final TestClient(client: client2, evCollector: evCollector2) =
+          await login(1);
 
       // Client 1 add DKG
       await client1.requestDkg(getDkgDetails());
@@ -539,11 +522,9 @@ void main() {
       // No DKG for both clients
       expect(client1.dkgRequests, isEmpty);
       expect(client2.dkgRequests, isEmpty);
-
     });
 
     test("handles incorrect DKG rejection event", () async {
-
       // Participant doesn't exist, or is self
       for (final badId in [badId, ids.first]) {
         await expectBadEvent(
@@ -551,11 +532,9 @@ void main() {
           DkgRejectEvent(name: "123", participant: badId),
         );
       }
-
     });
 
     test("Non-existant DKG ignored", () async {
-
       final TestClient(:evCollector) = await login(0);
 
       ctx.api.state.sendEventToAll(
@@ -572,18 +551,19 @@ void main() {
 
       ctx.api.state.sendEventToAll(
         getRound2ShareEvent(
-          dummyCommitmentSet, 1, 0, dummyPart1s[1],
+          dummyCommitmentSet,
+          1,
+          0,
+          dummyPart1s[1],
           Uint8List(32),
           altName: "noexist",
         ),
       );
 
       await evCollector.expectNoEventsOrError();
-
     });
 
     test("can create FROST keys", () async {
-
       // Create 10 clients
       final tcs = await loginMany(10);
       for (final tc in tcs) {
@@ -609,7 +589,6 @@ void main() {
 
       // Expect progress events and then completion event
       for (int i = 0; i < 10; i++) {
-
         final cid = ids[i];
         final evCollector = tcs[i].evCollector;
         await evCollector.expectNoError();
@@ -626,9 +605,8 @@ void main() {
 
         // Commitment events
         for (int j = 0; j < nCommitments; j++) {
-
           final ev = evs[j] as UpdatedDkgClientEvent;
-          final finished = j == nCommitments-1;
+          final finished = j == nCommitments - 1;
           final completed = ev.progress.completed;
 
           // Apart from creator and first acceptor, participants may or may not
@@ -647,12 +625,13 @@ void main() {
               // If round 2, then have just own share
               // If round 1, then have received commitments, plus creator, plus
               // own
-              round2 ? 1 : j+1+(isCreator ? 0 : 1)+(hasOwnCommitment ? 1 : 0),
+              round2
+                  ? 1
+                  : j + 1 + (isCreator ? 0 : 1) + (hasOwnCommitment ? 1 : 0),
             ),
           );
 
           if (!round2) expect(completed, contains(ids.first));
-
         }
 
         // Expect 8 update events from shares
@@ -660,13 +639,12 @@ void main() {
         // called
 
         for (int j = 0; j < 8; j++) {
-          final ev = evs[nCommitments+j] as UpdatedDkgClientEvent;
+          final ev = evs[nCommitments + j] as UpdatedDkgClientEvent;
           final completed = ev.progress.completed;
           expect(ev.progress.stage, DkgStage.round2);
-          expect(completed, hasLength(j+2));
+          expect(completed, hasLength(j + 2));
           expect(completed, contains(cid));
         }
-
       }
 
       // Expect key in storage
@@ -682,11 +660,9 @@ void main() {
       for (final tc in tcs) {
         expectNoDkgs(tc.client);
       }
-
     });
 
     test("cannot accept DKG twice", () async {
-
       final client1 = (await login(0)).client;
       final client2 = (await login(1)).client;
 
@@ -696,11 +672,9 @@ void main() {
       for (final client in [client1, client2]) {
         expectLater(() => client.acceptDkg("123"), throwsArgumentError);
       }
-
     });
 
     test("handles incorrect DkgCommitmentEvent", () async {
-
       final tc = await login(0);
       await tc.client.requestDkg(getDkgDetails());
 
@@ -730,7 +704,6 @@ void main() {
 
       await tc2.evCollector.getExpectOneEvent<UpdatedDkgClientEvent>();
       await tc2.evCollector.expectError<ServerMisbehaviour>();
-
     });
 
     test("handles round 2 share given on round 1", () async {
@@ -739,7 +712,11 @@ void main() {
       await expectBadEvent(
         tc,
         getRound2ShareEvent(
-          dummyCommitmentSet, 1, 0, dummyPart1s[1], Uint8List(32),
+          dummyCommitmentSet,
+          1,
+          0,
+          dummyPart1s[1],
+          Uint8List(32),
         ),
       );
     });
@@ -756,7 +733,6 @@ void main() {
     });
 
     test("handles invalid proof-of-knowledge", () async {
-
       final TestClient(:client, :evCollector) = await login(0);
       await client.requestDkg(getDkgDetails());
 
@@ -781,11 +757,9 @@ void main() {
       expect(rejectEv.fault, DkgFault.proofOfKnowledge);
 
       await evCollector.expectNoError();
-
     });
 
     test("remove DKG upon expiry", () async {
-
       final tc = await login(0);
       final state = getHiddenClientStateForTestsDoNotUse(tc.client);
 
@@ -796,25 +770,23 @@ void main() {
       );
 
       // Should get failure event due to expiry
-      final ev = await tc.evCollector.getExpectOneEvent<RejectedDkgClientEvent>();
+      final ev =
+          await tc.evCollector.getExpectOneEvent<RejectedDkgClientEvent>();
       expect(ev.participant, null);
       expect(ev.details.name, "toexpire");
       expect(ev.fault, DkgFault.expired);
 
       // No DKGs should exist
       expect(tc.client.dkgRequests, isEmpty);
-
     });
 
     group("given a round 2 DKG", () {
-
       late TestClient tc;
       late List<DkgPart1> part1s;
       late DkgCommitmentSet commitmentSet;
       late Uint8List commonHash;
 
       setUp(() async {
-
         tc = await login(9);
         await tc.client.requestDkg(dkgDetails.obj);
 
@@ -841,7 +813,6 @@ void main() {
 
         // Flush events we do not care about
         await tc.evCollector.getEvents();
-
       });
 
       test(
@@ -865,21 +836,21 @@ void main() {
       );
 
       Future<void> expectDkgRejectionOnEvent(
-        Event sendEv, DkgFault fault, [bool hasCulprit = true,]
-      ) async {
-
+        Event sendEv,
+        DkgFault fault, [
+        bool hasCulprit = true,
+      ]) async {
         ctx.api.state.sendEventToAll(sendEv);
 
         await tc.evCollector.expectNoError();
 
-        final ev = await tc.evCollector
-          .getExpectOneEvent<RejectedDkgClientEvent>();
+        final ev =
+            await tc.evCollector.getExpectOneEvent<RejectedDkgClientEvent>();
         expect(ev.participant, hasCulprit ? ids.first : null);
         expect(ev.details.name, "123");
         expect(ev.fault, fault);
 
         expectNoDkgs(tc.client);
-
       }
 
       test(
@@ -891,7 +862,6 @@ void main() {
       );
 
       test("handles logout causing DKG to return to round 1", () async {
-
         ctx.api.state.sendEventToAll(
           ParticipantStatusEvent(id: ids.first, loggedIn: false),
         );
@@ -901,7 +871,6 @@ void main() {
         expect(tc.client.acceptedDkgs, isEmpty);
         expect(tc.client.dkgRequests, hasLength(1));
         expect(tc.client.dkgRequests.first.completed, isEmpty);
-
       });
 
       test(
@@ -918,7 +887,8 @@ void main() {
           DkgRound2ShareEvent(
             name: "123",
             commitmentSetSignature: cl.SchnorrSignature.sign(
-              getPrivkey(0), commonHash,
+              getPrivkey(0),
+              commonHash,
             ),
             sender: ids.first,
             secret: DkgEncryptedSecret(
@@ -934,69 +904,71 @@ void main() {
         ),
       );
 
-      test(
-        "handles wrong secret",
-        () async {
+      test("handles wrong secret", () async {
+        // Send in bad secret
+        ctx.api.state.sendEventToAll(
+          getRound2ShareEvent(commitmentSet, 0, 9, part1s[1], commonHash),
+        );
 
-          // Send in bad secret
+        // Send in all but one good secrets
+        for (int i = 1; i < 8; i++) {
           ctx.api.state.sendEventToAll(
-            getRound2ShareEvent(commitmentSet, 0, 9, part1s[1], commonHash),
+            getRound2ShareEvent(commitmentSet, i, 9, part1s[i], commonHash),
           );
-
-          // Send in all but one good secrets
-          for (int i = 1; i < 8; i++) {
-            ctx.api.state.sendEventToAll(
-              getRound2ShareEvent(commitmentSet, i, 9, part1s[i], commonHash),
-            );
-          }
-
-          final evs = await tc.evCollector.getEvents();
-          expect(evs, hasLength(8));
-          expect(evs.any((e) => e is! UpdatedDkgClientEvent), false);
-
-          // Rejection happens on final event because only when all secrets are
-          // obtained can failured be determined
-          await expectDkgRejectionOnEvent(
-            getRound2ShareEvent(commitmentSet, 8, 9, part1s[8], commonHash),
-            DkgFault.secret,
-            false,
-          );
-
         }
-      );
+
+        final evs = await tc.evCollector.getEvents();
+        expect(evs, hasLength(8));
+        expect(evs.any((e) => e is! UpdatedDkgClientEvent), false);
+
+        // Rejection happens on final event because only when all secrets are
+        // obtained can failured be determined
+        await expectDkgRejectionOnEvent(
+          getRound2ShareEvent(commitmentSet, 8, 9, part1s[8], commonHash),
+          DkgFault.secret,
+          false,
+        );
+      });
 
       test("handles duplicate secret share", () async {
         final ev = getRound2ShareEvent(
-          commitmentSet, 1, 9, part1s[1], commonHash,
+          commitmentSet,
+          1,
+          9,
+          part1s[1],
+          commonHash,
         );
         ctx.api.state.sendEventToAll(ev);
         await tc.evCollector.expectOnlyOneEventType<UpdatedDkgClientEvent>();
         await expectBadEvent(tc, ev);
       });
-
     });
 
     Future<TestClient> loginWithOwnAck(
-      int i, [ Set<SignedDkgAck> otherAcks = const {}, ]
-    ) => login(
-      i,
-      storage: storeWithKeyAndAcks(i, { getDkgAck(i, true), ...otherAcks }),
-    );
+      int i, [
+      Set<SignedDkgAck> otherAcks = const {},
+    ]) =>
+        login(
+          i,
+          storage: storeWithKeyAndAcks(i, {getDkgAck(i, true), ...otherAcks}),
+        );
 
     test("ask and receive DKGs on logins", () async {
-
       final acks = List.generate(10, (i) => getDkgAck(i, true));
 
       // Give 4 acks to server
-      final ackCache = ctx.api.state.dkgAckCache[groupPublicKey]
-        = DkgAckCache(Expiry(Duration(days: 1)));
+      final ackCache = ctx.api.state.dkgAckCache[groupPublicKey] =
+          DkgAckCache(Expiry(Duration(days: 1)));
 
       for (int i = 0; i < 4; i++) {
         ackCache.acks[ids[i]] = acks[i].signed;
       }
 
       // Give 2 of the same acks and 2 different to client
-      final tc1 = await loginWithOwnAck(0, { acks[1], acks[4], acks[5] },);
+      final tc1 = await loginWithOwnAck(
+        0,
+        {acks[1], acks[4], acks[5]},
+      );
 
       // Receive 2 of them from server so it now has first 6
       await tc1.store.waitForKeyWithName("123", 6);
@@ -1006,7 +978,12 @@ void main() {
       // Plus 2 others
       final tc2 = await loginWithOwnAck(
         1,
-        { acks[2], acks[5], acks[6], acks[7], },
+        {
+          acks[2],
+          acks[5],
+          acks[6],
+          acks[7],
+        },
       );
 
       // Client 1 should receive 2 others
@@ -1025,13 +1002,12 @@ void main() {
         await tc.store.waitForKeyWithName("123", 10);
         await tc.expectOnlyLoginEvents();
       }
-
     });
 
     test("gives negative ACK without key", () async {
-
       Future<void> expectAcks(
-        TestClient tc, List<(int, bool)> expected,
+        TestClient tc,
+        List<(int, bool)> expected,
       ) async {
         await waitFor(
           () => tc.store.keys.values.first.acks.length == expected.length,
@@ -1040,7 +1016,11 @@ void main() {
         expect(actual, hasLength(expected.length));
         for (final (expI, expAccepted) in expected) {
           expect(
-            actual.firstWhere((ack) => ack.signer == ids[expI]).signed.obj.accepted,
+            actual
+                .firstWhere((ack) => ack.signer == ids[expI])
+                .signed
+                .obj
+                .accepted,
             expAccepted,
           );
         }
@@ -1050,7 +1030,7 @@ void main() {
       final tc1 = await loginWithOwnAck(0);
 
       // Login client 2 that provides NACK for third client
-      final tc2 = await loginWithOwnAck(1, { getDkgAck(2, false) });
+      final tc2 = await loginWithOwnAck(1, {getDkgAck(2, false)});
 
       // Client 1 & 2 should now have client 1 and 2 ACK and id 3 NACK
       final expAcks = [(0, true), (1, true), (2, false)];
@@ -1097,11 +1077,9 @@ void main() {
       expAcks[3] = (3, true);
       await waitFor(() => tc1.store.keys.values.first.acceptedAcks == 4);
       await expectAcks(tc1, expAcks);
-
     });
 
     test("handles bad DkgAckEvent", () async {
-
       final ackWithId = getDkgAck(0, true);
       final ack1 = ackWithId.signed;
 
@@ -1109,22 +1087,21 @@ void main() {
       await expectBadEvent(
         await loginWithOwnAck(0),
         DkgAckEvent(
-          { SignedDkgAck(signer: badId, signed: ack1) },
+          {SignedDkgAck(signer: badId, signed: ack1)},
         ),
       );
 
       // Wrong identifier, bad signature
       await expectBadEvent(
         await loginWithOwnAck(0),
-        DkgAckEvent({ SignedDkgAck(signer: ids[1], signed: ack1) }),
+        DkgAckEvent({SignedDkgAck(signer: ids[1], signed: ack1)}),
       );
 
       // Can't be self
       await expectBadEvent(
         await loginWithOwnAck(0),
-        DkgAckEvent({ ackWithId }),
+        DkgAckEvent({ackWithId}),
       );
-
     });
 
     test("handles bad DkgAckRequestEvent", () async {
@@ -1132,7 +1109,9 @@ void main() {
       await expectBadEvent(
         await loginWithOwnAck(0),
         DkgAckRequestEvent(
-          { DkgAckRequest(ids: {badId}, groupPublicKey: groupPublicKey) },
+          {
+            DkgAckRequest(ids: {badId}, groupPublicKey: groupPublicKey),
+          },
         ),
       );
     });
@@ -1141,13 +1120,12 @@ void main() {
       final tc = await TestClient.login(
         MockUnrequestedAckApi(),
         0,
-        storage: storeWithKeyAndAcks(0, { getDkgAck(0, true) }),
+        storage: storeWithKeyAndAcks(0, {getDkgAck(0, true)}),
       );
       await tc.evCollector.expectError<ServerMisbehaviour>();
     });
 
     group("given all clients with 3-threshold key", () {
-
       late SignaturesRequestDetails reqDetails;
       // Assign with 3-of-10 and 6-of-10
       late List<List<ParticipantKeyInfo>> infosForKeys;
@@ -1179,46 +1157,47 @@ void main() {
         tcs[i] = await loginOne(i);
       }
 
-      SignaturesRequestDetails getSigDetailsWithKeys(
-        {
-          Expiry? expiry,
-          List<cl.ECCompressedPublicKey>? keys,
-        }
-      ) => SignaturesRequestDetails.allowNegativeExpiry(
-        requiredSigs: (keys ?? groupKeys).map(
-          (key) => SingleSignatureDetails(
-            signDetails: getSignDetails(0),
-            groupKey: key,
-            hdDerivation: [0],
-          ),
-        ).toList(),
-        expiry: expiry ?? futureExpiry,
-      );
+      SignaturesRequestDetails getSigDetailsWithKeys({
+        Expiry? expiry,
+        List<cl.ECCompressedPublicKey>? keys,
+      }) =>
+          SignaturesRequestDetails.allowNegativeExpiry(
+            requiredSigs: (keys ?? groupKeys)
+                .map(
+                  (key) => SingleSignatureDetails(
+                    signDetails: getSignDetails(0),
+                    groupKey: key,
+                    hdDerivation: [0],
+                  ),
+                )
+                .toList(),
+            expiry: expiry ?? futureExpiry,
+          );
 
       void expectNoSecretsInFirst() => expect(
-        stores.first.keys.values.map((key) => key.keyConstruction),
-        everyElement(
-          isA<KeyConstructionProgress>()
-          .having(
-            (construction) => construction.secrets,
-            ".secrets",
-            isEmpty,
-          ),
-        ),
-      );
+            stores.first.keys.values.map((key) => key.keyConstruction),
+            everyElement(
+              isA<KeyConstructionProgress>().having(
+                (construction) => construction.secrets,
+                ".secrets",
+                isEmpty,
+              ),
+            ),
+          );
 
       setUp(() async {
-
         infosForKeys = [generateNewKey(3), generateNewKey(6)];
-        groupKeys = infosForKeys.map(
-          (keyInfos) => keyInfos.first.groupKey,
-        ).toList();
+        groupKeys = infosForKeys
+            .map(
+              (keyInfos) => keyInfos.first.groupKey,
+            )
+            .toList();
         stores = List.generate(
           10,
           (i) {
             final store = InMemoryClientStorage();
 
-            for (final j in [0,1]) {
+            for (final j in [0, 1]) {
               store.addOrReplaceFrostKey(
                 FrostKeyWithDetails(
                   keyInfo: infosForKeys[j][i],
@@ -1241,11 +1220,9 @@ void main() {
         );
 
         await loginAll();
-
       });
 
       test("requestSignatures success", () async {
-
         // First client creates request
         await tcs.first.client.requestSignatures(reqDetails);
 
@@ -1264,7 +1241,7 @@ void main() {
         await tcs.first.evCollector.expectNoEventsOrError();
         for (final tc in tcs.skip(1)) {
           final ev = await tc.evCollector
-            .getExpectOneEvent<SignaturesRequestClientEvent>();
+              .getExpectOneEvent<SignaturesRequestClientEvent>();
           expectRequest(ev.request, SignaturesRequestStatus.waiting);
         }
 
@@ -1274,6 +1251,7 @@ void main() {
             expect(reqs, hasLength(1));
             expectRequest(reqs.first, status);
           }
+
           expectRequests(tcs.first, SignaturesRequestStatus.accepted);
           for (final tc in tcs.skip(1)) {
             expectRequests(tc, SignaturesRequestStatus.waiting);
@@ -1289,19 +1267,17 @@ void main() {
 
         // Nonces exist in storage
         expect(stores.first.sigNonces, contains(reqDetails.id));
-
       });
 
       test("requestSignatures failure", () async {
-
         // Already existing request
         await tcs.first.client.requestSignatures(reqDetails);
 
-        Future<void> expectFail(SignaturesRequestDetails details)
-          => expectLater(
-            () => tcs.first.client.requestSignatures(details),
-            throwsArgumentError,
-          );
+        Future<void> expectFail(SignaturesRequestDetails details) =>
+            expectLater(
+              () => tcs.first.client.requestSignatures(details),
+              throwsArgumentError,
+            );
 
         // Bad expiry
         for (final duration in [
@@ -1316,7 +1292,6 @@ void main() {
 
         // Non-existant key using details without stored key
         await expectFail(getSignaturesDetails());
-
       });
 
       test(
@@ -1327,7 +1302,6 @@ void main() {
       );
 
       test("handles incorrect signatures request event", () async {
-
         Future<void> expectBadSigReqEv(
           Signed<SignaturesRequestDetails> details,
           Identifier id,
@@ -1363,9 +1337,8 @@ void main() {
 
         // Cannot receive signatures request we already have
         await tcs[1].client.requestSignatures(reqDetails);
-        await tcs.first.evCollector.expectOnlyOneEventType<
-          SignaturesRequestClientEvent
-        >();
+        await tcs.first.evCollector
+            .expectOnlyOneEventType<SignaturesRequestClientEvent>();
         await expectBadEvent(
           tcs.first,
           SignaturesRequestEvent(
@@ -1373,11 +1346,9 @@ void main() {
             creator: ids[1],
           ),
         );
-
       });
 
       test("signatures request expiry is clamped", () async {
-
         final reqExp = Expiry(Duration(days: 15));
         final details = getSigDetailsWithKeys(expiry: reqExp);
 
@@ -1390,7 +1361,7 @@ void main() {
         );
 
         final ev = await tcs.first.evCollector
-          .getExpectOneEvent<SignaturesRequestClientEvent>();
+            .getExpectOneEvent<SignaturesRequestClientEvent>();
 
         // Details are the same
         expect(ev.request.details.id, details.id);
@@ -1404,11 +1375,9 @@ void main() {
           ev.request.expiry.time,
           tcs.first.client.signaturesRequests.first.expiry.time,
         );
-
       });
 
       test("signatures request auto rejected for missing keys", () async {
-
         // Give first client a key that others do not have
         final otherKey = generateNewKey(3).first;
         await tcs.first.store.addOrReplaceFrostKey(
@@ -1452,7 +1421,6 @@ void main() {
         expect(evs.take(2), everyElement(isA<ParticipantStatusClientEvent>()));
         final ev = evs.last as SignaturesFailureClientEvent;
         expect(ev.request.details.id, sigDetails.id);
-
       });
 
       test("ignore signatures request that doesn't exist", () async {
@@ -1461,7 +1429,6 @@ void main() {
       });
 
       test("remove signatures request upon expiry", () async {
-
         final state = getHiddenClientStateForTestsDoNotUse(tcs.first.client);
         state.sigRequests[reqDetails.id] = ClientSigsState(
           details: reqDetails,
@@ -1471,16 +1438,14 @@ void main() {
 
         // Should get an expiry event
         final ev = await tcs.first.evCollector
-          .getExpectOneEvent<SignaturesExpiryClientEvent>();
+            .getExpectOneEvent<SignaturesExpiryClientEvent>();
         expect(ev.request.details.id, reqDetails.id);
 
         // No requests should exist
         expect(tcs.first.client.signaturesRequests, isEmpty);
-
       });
 
       test("handles premature completed signatures", () async {
-
         final mockServ = MockPrematureSigsApi();
         final newTcs = await Future.wait(
           List.generate(
@@ -1495,11 +1460,9 @@ void main() {
         await expectMisbehaviour(
           () => newTcs.first.client.acceptSignaturesRequest(reqDetails.id),
         );
-
       });
 
       group("given signature request", () {
-
         late SigningCommitment firstCommitment;
         late SignatureRoundStart validRound;
         late SignaturesCoordinationState sigState;
@@ -1507,7 +1470,6 @@ void main() {
         late List<SignatureNewRoundsEvent> badNewRounds;
 
         setUp(() async {
-
           await tcs.first.client.requestSignatures(reqDetails);
           sigState = ctx.api.state.sigRequests.values.first;
 
@@ -1516,9 +1478,9 @@ void main() {
             await tc.evCollector.getEvents();
           }
 
-          firstCommitment = (
-            sigState.sigs.first as SingleSignatureInProgressState
-          ).nextCommitments[ids.first]!;
+          firstCommitment =
+              (sigState.sigs.first as SingleSignatureInProgressState)
+                  .nextCommitments[ids.first]!;
 
           validRound = SignatureRoundStart(
             sigI: 0,
@@ -1532,8 +1494,7 @@ void main() {
           // Get a valid signature for the first requested signature
           final part1s = List.generate(3, (i) => getSignPart1());
           final commitments = SigningCommitmentSet({
-            for (int i = 0; i < 3; i++)
-              ids[i]: part1s[i].commitment,
+            for (int i = 0; i < 3; i++) ids[i]: part1s[i].commitment,
           });
           final sigDetails = reqDetails.requiredSigs.first;
           final shares = List.generate(
@@ -1543,9 +1504,11 @@ void main() {
               details: sigDetails.signDetails,
               ourNonces: part1s[i].nonces,
               commitments: commitments,
-              info: sigDetails.derive(
-                HDParticipantKeyInfo.masterFromInfo(infosForKeys.first[i]),
-              ).signing,
+              info: sigDetails
+                  .derive(
+                    HDParticipantKeyInfo.masterFromInfo(infosForKeys.first[i]),
+                  )
+                  .signing,
             ),
           );
           validFirstSig = SignatureAggregation(
@@ -1560,22 +1523,22 @@ void main() {
           ).signature;
 
           badNewRounds = [
-
             for (final multiRounds in [
               // Empty rounds
               <SignatureRoundStart>[],
               // Duplicate round
               [validRound, validRound],
-            ]) SignatureNewRoundsEvent(
-              reqId: reqDetails.id,
-              rounds: multiRounds,
-            ),
+            ])
+              SignatureNewRoundsEvent(
+                reqId: reqDetails.id,
+                rounds: multiRounds,
+              ),
 
             for (final singleRound in [
               // Incorrect number of commitments
               SignatureRoundStart(
                 sigI: 0,
-                commitments: SigningCommitmentSet({ ids.first: firstCommitment }),
+                commitments: SigningCommitmentSet({ids.first: firstCommitment}),
               ),
               // Doesn't contain participant
               SignatureRoundStart(
@@ -1594,27 +1557,27 @@ void main() {
                   badId: getSignPart1().commitment,
                 }),
               ),
-            ]) SignatureNewRoundsEvent(
-              reqId: reqDetails.id,
-              rounds: [singleRound],
-            ),
+            ])
+              SignatureNewRoundsEvent(
+                reqId: reqDetails.id,
+                rounds: [singleRound],
+              ),
 
             // Signature out of range
-            for (final badI in [2, -1]) SignatureNewRoundsEvent(
-              reqId: reqDetails.id,
-              rounds: [
-                SignatureRoundStart(
-                  sigI: badI, commitments: validRound.commitments,
-                ),
-              ],
-            ),
-
+            for (final badI in [2, -1])
+              SignatureNewRoundsEvent(
+                reqId: reqDetails.id,
+                rounds: [
+                  SignatureRoundStart(
+                    sigI: badI,
+                    commitments: validRound.commitments,
+                  ),
+                ],
+              ),
           ];
-
         });
 
         test("invalid login sigRounds", () async {
-
           final signedDetails = signObject(reqDetails);
           final validEv = SignatureNewRoundsEvent(
             reqId: reqDetails.id,
@@ -1624,7 +1587,12 @@ void main() {
           for (final badSigRounds in [
             ...badNewRounds.map((nre) => [nre]),
             // Missing request
-            [SignatureNewRoundsEvent(reqId: missingReqId, rounds: [validRound])],
+            [
+              SignatureNewRoundsEvent(
+                reqId: missingReqId,
+                rounds: [validRound],
+              ),
+            ],
             // Duplicate request
             [validEv, validEv],
           ]) {
@@ -1642,11 +1610,9 @@ void main() {
             );
             await expectMisbehaviour(() => login(0, storage: stores.first));
           }
-
         });
 
         test("invalid login completedSigs", () async {
-
           // Create new request requiring only one 3-of-3 sig
           final singleReq = getSigDetailsWithKeys(
             keys: groupKeys.take(1).toList(),
@@ -1700,18 +1666,17 @@ void main() {
           );
 
           await login(0, storage: stores.first);
-
         });
 
-        void expectStatus(TestClient tc, SignaturesRequestStatus status)
-          => expect(tc.client.signaturesRequests.first.status, status);
+        void expectStatus(TestClient tc, SignaturesRequestStatus status) =>
+            expect(tc.client.signaturesRequests.first.status, status);
 
         void expectRejectors(Set<Identifier> ids) => expect(
-          sigState.rejectors, ids,
-        );
+              sigState.rejectors,
+              ids,
+            );
 
         test("signature requests can be rejected", () async {
-
           // 1-4 reject, leaving 0 and 5-9 able to sign
           for (final tc in tcs.skip(1).take(4)) {
             await tc.client.rejectSignaturesRequest(reqDetails.id);
@@ -1737,7 +1702,7 @@ void main() {
           // Everyone gets failure event and signature request is removed
           for (final tc in tcs) {
             final ev = await tc.evCollector
-              .getExpectOneEvent<SignaturesFailureClientEvent>();
+                .getExpectOneEvent<SignaturesFailureClientEvent>();
             expect(ev.request.details.id, reqDetails.id);
             expect(tc.client.signaturesRequests, isEmpty);
             expect(tc.store.sigsRejected, isEmpty);
@@ -1745,7 +1710,6 @@ void main() {
           }
 
           expect(ctx.api.state.sigRequests.values, isEmpty);
-
         });
 
         test("ignore SignatureNewRoundsEvent for missing request", () async {
@@ -1757,8 +1721,9 @@ void main() {
 
         Future<void> waitForAndExpectRejected(int i) async {
           await waitFor(
-            () => tcs[i].client.signaturesRequests.first.status
-            == SignaturesRequestStatus.rejected,
+            () =>
+                tcs[i].client.signaturesRequests.first.status ==
+                SignaturesRequestStatus.rejected,
           );
           expectRejectors({ids[i]});
         }
@@ -1791,7 +1756,6 @@ void main() {
         });
 
         Future<void> expectRejectAfterReloginAndRound() async {
-
           await tcs.first.client.logout();
 
           // Get to 3-of-3 round
@@ -1802,7 +1766,6 @@ void main() {
           // Login again and reject signature as a result of not having nonce
           tcs.first = await login(0, storage: tcs.first.store);
           await waitForAndExpectRejected(0);
-
         }
 
         test("reject request if missing nonce for round on login", () async {
@@ -1811,13 +1774,11 @@ void main() {
         });
 
         test("reject request if wrong nonce for round on login", () async {
-          tcs.first.store.sigNonces.values.first.map[0]
-            = getSignPart1().nonces;
+          tcs.first.store.sigNonces.values.first.map[0] = getSignPart1().nonces;
           await expectRejectAfterReloginAndRound();
         });
 
         test("invalid SignatureNewRoundsEvent", () async {
-
           for (final badEv in badNewRounds) {
             await expectBadEventRelogin(0, badEv);
           }
@@ -1834,7 +1795,6 @@ void main() {
           sendEventToClient(tcs.first, newRoundEv);
           await tcs.first.evCollector.expectNoError();
           await expectBadEvent(tcs.first, newRoundEv);
-
         });
 
         test("ignore SignaturesCompleteEvent for missing request", () async {
@@ -1848,7 +1808,6 @@ void main() {
         });
 
         test("invalid SignaturesCompleteEvent", () async {
-
           // No signatures
           await expectBadEventRelogin(
             0,
@@ -1856,47 +1815,47 @@ void main() {
           );
 
           for (
-            // Only one sig, or incorrect sig for second
-            final sigs in [[validFirstSig], [validFirstSig, validFirstSig]]
-          ) {
+              // Only one sig, or incorrect sig for second
+              final sigs in [
+            [validFirstSig],
+            [validFirstSig, validFirstSig],
+          ]) {
             await expectBadEventRelogin(
               0,
               SignaturesCompleteEvent(reqId: reqDetails.id, signatures: sigs),
             );
           }
-
         });
 
         Future<void> massAccept(Iterable<TestClient> tcs) => Future.wait(
-          tcs.map((tc) => tc.client.acceptSignaturesRequest(reqDetails.id)),
-        );
+              tcs.map((tc) => tc.client.acceptSignaturesRequest(reqDetails.id)),
+            );
 
         Future<void> waitForSig() => waitFor(
-          () => ctx.api.state.completedSigs.values.isNotEmpty,
-        );
+              () => ctx.api.state.completedSigs.values.isNotEmpty,
+            );
 
         Future<void> expectSigsEv(TestClient tc) async {
           final ev = await tc.evCollector
-            .getExpectOneEvent<SignaturesCompleteClientEvent>();
+              .getExpectOneEvent<SignaturesCompleteClientEvent>();
           expect(ev.details.id, reqDetails.id);
           expect(ev.creator, ids.first);
           expect(ev.signatures, hasLength(2));
         }
 
         Future<void> expectNoEvents() => Future.wait(
-          tcs.map((tc) => tc.evCollector.expectNoEvents()),
-        );
+              tcs.map((tc) => tc.evCollector.expectNoEvents()),
+            );
 
-        Future<void> expectOnlyStatusEvents(Iterable<TestClient> tcs)
-          => Future.wait(
-            tcs.map(
-              (tc) => tc.evCollector
-              .expectOnlyOneEventType<ParticipantStatusClientEvent>(),
-            ),
-          );
+        Future<void> expectOnlyStatusEvents(Iterable<TestClient> tcs) =>
+            Future.wait(
+              tcs.map(
+                (tc) => tc.evCollector
+                    .expectOnlyOneEventType<ParticipantStatusClientEvent>(),
+              ),
+            );
 
         test("can create valid signature", () async {
-
           // Last logs out to come back to signatures later
           await tcs.last.logout();
           await expectOnlyStatusEvents(tcs.take(9));
@@ -1925,11 +1884,9 @@ void main() {
             expect(tc.store.sigNonces, hasLength(0));
             expect(tc.store.sigsRejected, hasLength(0));
           }
-
         });
 
         test("can approve after rejection and complete next round", () async {
-
           // Approve 5
           await massAccept(tcs.take(5));
 
@@ -1949,11 +1906,9 @@ void main() {
           for (final tc in tcs) {
             await expectSigsEv(tc);
           }
-
         });
 
         test("can continue round after re-login", () async {
-
           // Approve another
           await massAccept(tcs.take(2));
 
@@ -1983,67 +1938,61 @@ void main() {
           for (final tc in tcs) {
             await expectSigsEv(tc);
           }
-
         });
-
       });
 
       group(".shareKeySecret", () {
-
         test("failure", () async {
-
           Future<void> expectFailure(
             cl.ECCompressedPublicKey groupKey,
             Set<Identifier> toWhom,
-          ) => expectLater(
-            () => tcs.first.client.shareKeySecret(groupKey, toWhom: toWhom),
-            throwsArgumentError,
-          );
+          ) =>
+              expectLater(
+                () => tcs.first.client.shareKeySecret(groupKey, toWhom: toWhom),
+                throwsArgumentError,
+              );
 
           // Group key doesn't exist
-          await expectFailure(groupPublicKey, { ids.last });
+          await expectFailure(groupPublicKey, {ids.last});
 
           // Cannot send to self
-          await expectFailure(groupKeys.first, { ids.first, ids.last });
+          await expectFailure(groupKeys.first, {ids.first, ids.last});
 
           // Participants must exist
           await expectFailure(
             groupKeys.first,
-            { ids.last, badId },
+            {ids.last, badId},
           );
-
         });
 
         test("sucessful sharing and construction", () async {
-
-          Future<void> doShare(int i, [ Set<int>? to ])
-            => tcs[i].client.shareKeySecret(
-              groupKeys.first,
-              toWhom: to?.map((i) => ids[i]).toSet(),
-            );
+          Future<void> doShare(int i, [Set<int>? to]) =>
+              tcs[i].client.shareKeySecret(
+                    groupKeys.first,
+                    toWhom: to?.map((i) => ids[i]).toSet(),
+                  );
 
           void expectCompleted(KeyConstruction construction) => expect(
-            construction,
-            isA<KeyConstructionComplete>().having(
-              (construction) => construction.privateKey.pubkey,
-              ".privateKey.pubkey",
-              groupKeys.first,
-            ),
-          );
+                construction,
+                isA<KeyConstructionComplete>().having(
+                  (construction) => construction.privateKey.pubkey,
+                  ".privateKey.pubkey",
+                  groupKeys.first,
+                ),
+              );
 
           Future<void> expectShareEvents(
             int i,
             Iterable<int> from,
             bool startCompleted,
           ) async {
-
             final evs = await tcs[i].evCollector.getEvents();
 
             // Discard login events
             final shareEvs = evs
-              .where((ev) => ev is! ParticipantStatusClientEvent)
-              .cast<SecretShareClientEvent>()
-              .toList();
+                .where((ev) => ev is! ParticipantStatusClientEvent)
+                .cast<SecretShareClientEvent>()
+                .toList();
 
             expect(shareEvs, hasLength(from.length));
             expect(
@@ -2052,7 +2001,6 @@ void main() {
             );
 
             for (final ev in shareEvs) {
-
               final construction = ev.keyDetails.keyConstruction;
 
               if (!startCompleted) {
@@ -2068,20 +2016,18 @@ void main() {
               } else {
                 expectCompleted(construction);
               }
-
             }
-
           }
 
           // Logout third
           await tcs[2].logout();
 
           // Share secret of 1st to 2nd, 3rd
-          await doShare(0, {1,2});
+          await doShare(0, {1, 2});
           await expectShareEvents(1, {0}, false);
 
           // Shares secret of 2nd to 1st 3rd, 4th
-          await doShare(1, {0,2,3});
+          await doShare(1, {0, 2, 3});
           await expectShareEvents(0, {1}, false);
           await expectShareEvents(3, {1}, false);
 
@@ -2115,7 +2061,7 @@ void main() {
           // 2nd attempts to resend to 4th but it does nothing
           // 2nd also shares to 5th that completes
           // 4th attampts to resend but it already sent to everyone
-          await doShare(1, {3,4});
+          await doShare(1, {3, 4});
           await doShare(3);
           await expectShareEvents(4, {1}, true);
           for (final tc in tcs) {
@@ -2124,13 +2070,10 @@ void main() {
 
           // 2nd, 3rd and 5th have completed. Ensure others have claimedToHave
           for (final tc in tcs.skip(1)) {
-            expect(
-              tc.store.keys.values.first.claimedToHave,
-              {
-                for (final i in {1,2,4})
-                  if (ids[i] != tc.client.config.id) ids[i],
-              }
-            );
+            expect(tc.store.keys.values.first.claimedToHave, {
+              for (final i in {1, 2, 4})
+                if (ids[i] != tc.client.config.id) ids[i],
+            });
           }
 
           // Server close and reopen
@@ -2141,22 +2084,21 @@ void main() {
           tcs[0] = await loginOne(0);
           tcs[3] = await loginOne(3);
           await expectShareEvents(0, {3}, true);
-
         });
 
         test("ignores invalid share", () async {
-
           void sendEvent(
             Identifier sender,
             cl.ECCompressedPublicKey key,
-          ) => sendEventToClient(
-            tcs.first,
-            SecretShareEvent(
-              sender: sender,
-              keyShare: validKeyShare,
-              groupKey: key,
-            ),
-          );
+          ) =>
+              sendEventToClient(
+                tcs.first,
+                SecretShareEvent(
+                  sender: sender,
+                  keyShare: validKeyShare,
+                  groupKey: key,
+                ),
+              );
 
           Future<void> ignoresInvalid(
             Identifier sender,
@@ -2175,14 +2117,11 @@ void main() {
           // Check valid works
           sendEvent(ids.last, groupKeys.first);
           await tcs.first.evCollector
-            .getExpectOneEvent<SecretShareClientEvent>();
-
+              .getExpectOneEvent<SecretShareClientEvent>();
         });
-
       });
 
       test("invalid login secretShares", () async {
-
         await tcs.first.logout();
 
         for (final badId in [ids.first, badId]) {
@@ -2199,13 +2138,12 @@ void main() {
           );
           await expectMisbehaviour(() => login(0, storage: stores.first));
         }
-
       });
 
       test("ignore wrong secretShares on login", () async {
-
         Future<void> loginWithEv(
-          Identifier sender, cl.ECCompressedPublicKey key,
+          Identifier sender,
+          cl.ECCompressedPublicKey key,
         ) async {
           ctx = TestContext(
             LoginRespMockApi(
@@ -2232,16 +2170,13 @@ void main() {
         await loginWithEv(ids.last, groupKeys.first);
         expect(
           stores.first.keys.values.first.keyConstruction,
-          isA<KeyConstructionProgress>()
-          .having(
+          isA<KeyConstructionProgress>().having(
             (construction) => construction.secrets,
             ".secrets",
             hasLength(1),
           ),
         );
-
       });
-
     });
 
     test("invalid SecretShareEvent", () async {
@@ -2258,7 +2193,6 @@ void main() {
     });
 
     test("invalid ConstructedKeyEvent", () async {
-
       final constructedKey = Signed<KeyWasConstructed>.sign(
         obj: KeyWasConstructed(groupPublicKey),
         key: getPrivkey(0),
@@ -2271,8 +2205,6 @@ void main() {
           ConstructedKeyEvent(participant: id, constructedKey: constructedKey),
         );
       }
-
     });
-
   });
 }

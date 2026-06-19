@@ -12,31 +12,31 @@ import 'sig_data.dart';
 import 'test_keys.dart';
 
 void main() {
-
   setUpAll(loadFrosty);
 
   group("GrpcClientApi + FrostNoosphereService", () {
-
     // Port hopefully unused
     final port = 13543;
     late ServerApiHandler apiHandler;
     late grpc.Server server;
 
     grpc.ClientChannel getChannel() => grpc.ClientChannel(
-      "127.0.0.1",
-      port: port,
-      options: const grpc.ChannelOptions(
-        credentials: grpc.ChannelCredentials.insecure(),
-      ),
-    );
+          "127.0.0.1",
+          port: port,
+          options: const grpc.ChannelOptions(
+            credentials: grpc.ChannelCredentials.insecure(),
+          ),
+        );
 
     GrpcClientApi getApi() => GrpcClientApi(getChannel());
 
     Future<TestClient> login(
-      int i, { void Function()? onDisconnect, }
-    ) async {
+      int i, {
+      void Function()? onDisconnect,
+    }) async {
       final client = await TestClient.login(
-        getApi(), i,
+        getApi(),
+        i,
         onDisconnect: onDisconnect,
       );
       await client.expectOnlyLoginEvents();
@@ -53,16 +53,18 @@ void main() {
     tearDown(() => server.shutdown());
 
     // Give wrong fingerprint and expect error
-    test("handles error", () => expectLater(
-      () => getApi().login(
-        groupFingerprint: Uint8List(32),
-        participantId: ids.first,
+    test(
+      "handles error",
+      () => expectLater(
+        () => getApi().login(
+          groupFingerprint: Uint8List(32),
+          participantId: ids.first,
+        ),
+        throwsA(isA<InvalidRequest>()),
       ),
-      throwsA(isA<InvalidRequest>()),
-    ),);
+    );
 
     test("can login and logout with events", () async {
-
       final clients = await Future.wait(List.generate(10, login));
 
       // Logout first client
@@ -78,11 +80,10 @@ void main() {
           () => client.client.onlineParticipants.length == 8,
         );
         final ev = await client.evCollector
-          .getExpectOneEvent<ParticipantStatusClientEvent>();
+            .getExpectOneEvent<ParticipantStatusClientEvent>();
         expect(ev.id, ids.first);
         expect(ev.loggedIn, false);
       }
-
     });
 
     test("client handles server being offline", () async {
@@ -108,13 +109,14 @@ void main() {
       final wireApi = pbrpc.NoosphereClient(getChannel());
       final stream = wireApi.fetchEventStream(pbrpc.Bytes(data: Uint8List(16)));
       await expectLater(
-        () async { await for (final _ in stream) {} },
+        () async {
+          await for (final _ in stream) {}
+        },
         throwsA(isA<grpc.GrpcError>()),
       );
     });
 
     group("given DKG request and clients", () {
-
       late List<TestClient> tcs;
 
       setUp(() async {
@@ -129,26 +131,22 @@ void main() {
       test("can reject DKG", () async {
         await tcs.last.client.rejectDkg("123");
         for (final tc in tcs.take(9)) {
-
           await waitFor(() => tc.client.dkgRequests.isEmpty);
 
-          final ev = await tc.evCollector
-            .getExpectOneEvent<RejectedDkgClientEvent>();
+          final ev =
+              await tc.evCollector.getExpectOneEvent<RejectedDkgClientEvent>();
 
           expect(ev.details.name, "123");
           expect(ev.participant, ids.last);
           expect(ev.fault, DkgFault.none);
-
         }
       });
 
       group("given key and signatures request", () {
-
         late SignaturesRequestId reqId;
         late cl.ECCompressedPublicKey groupKey;
 
         setUp(() async {
-
           // All other clients accept DKG
           await Future.wait(
             tcs.skip(1).map((tc) => tc.client.acceptDkg("123")),
@@ -161,7 +159,7 @@ void main() {
           for (final tc in tcs) {
             expect(tc.store.keys.values.first.name, "123");
             await tc.evCollector
-              .expectOnlyOneEventType<UpdatedDkgClientEvent>();
+                .expectOnlyOneEventType<UpdatedDkgClientEvent>();
           }
 
           groupKey = cl.ECCompressedPublicKey.fromPubkey(
@@ -185,13 +183,12 @@ void main() {
           // Expect all other clients to receive
           for (final tc in tcs.skip(1)) {
             await waitFor(() => tc.client.signaturesRequests.length == 1);
-            await tc.evCollector.getExpectOneEvent<SignaturesRequestClientEvent>();
+            await tc.evCollector
+                .getExpectOneEvent<SignaturesRequestClientEvent>();
           }
-
         });
 
         test("can reject request", () async {
-
           // 9 total rejections causes failure
           for (final tc in tcs.take(9)) {
             await tc.client.rejectSignaturesRequest(reqId);
@@ -200,10 +197,9 @@ void main() {
           for (final tc in tcs) {
             await tc.waitForNoSigsReqs();
             final ev = await tc.evCollector
-              .getExpectOneEvent<SignaturesFailureClientEvent>();
+                .getExpectOneEvent<SignaturesFailureClientEvent>();
             expect(ev.request.details.id, reqId);
           }
-
         });
 
         Future<void> logoutLast() async {
@@ -215,14 +211,15 @@ void main() {
 
         Future<void> reloginLast() async {
           tcs.last = await TestClient.login(
-            getApi(), 9, storage: tcs.last.store,
+            getApi(),
+            9,
+            storage: tcs.last.store,
           );
         }
 
         test(
           "can accept request and receive completed signature on login",
           () async {
-
             // Logout last to receive signature on login
             await logoutLast();
 
@@ -233,7 +230,7 @@ void main() {
               TestClient tc,
             ) async {
               final ev = await tc.evCollector
-                .getExpectOneEvent<SignaturesCompleteClientEvent>();
+                  .getExpectOneEvent<SignaturesCompleteClientEvent>();
               expect(ev.details.id, reqId);
               expect(ev.creator, ids.first);
               expect(ev.signatures, hasLength(1));
@@ -258,12 +255,10 @@ void main() {
               ev.signatures.first.verify(tr.tweakedKey, Uint8List(32)),
               true,
             );
-
           },
         );
 
         test("can construct underlying key", () async {
-
           // Logout last to receive key on login
           await logoutLast();
 
@@ -271,26 +266,26 @@ void main() {
           await Future.wait(
             tcs.take(2).map((tc) => tc.client.shareKeySecret(groupKey)),
           );
-          await Future.wait(tcs.take(9).map((tc) => tc.waitForKeyConstructed()));
+          await Future.wait(
+            tcs.take(9).map((tc) => tc.waitForKeyConstructed()),
+          );
 
           // Last logs in and obtains key
           await reloginLast();
           await tcs.last.waitForKeyConstructed();
-
         });
-
       });
-
     });
 
     test("can receive needed DKG acks", () async {
-
       // Clients login with own ACKs
       List<TestClient> tcs = await Future.wait(
         List.generate(
-          10, (i) => TestClient.login(
-            getApi(), i,
-            storage: storeWithKeyAndAcks(i, { getDkgAck(i, true) }),
+          10,
+          (i) => TestClient.login(
+            getApi(),
+            i,
+            storage: storeWithKeyAndAcks(i, {getDkgAck(i, true)}),
           ),
         ),
       );
@@ -299,9 +294,6 @@ void main() {
       await Future.wait(
         tcs.map((tc) => tc.store.waitForKeyWithName("123", 10)),
       );
-
     });
-
   });
-
 }

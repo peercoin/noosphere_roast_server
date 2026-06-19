@@ -4,13 +4,13 @@ import 'package:test/test.dart';
 void writableTest(
   cl.Writable Function() getWritable,
   cl.Writable Function(cl.BytesReader) fromReader,
-) => test("read/write", () {
-  final bytes = getWritable().toBytes();
-  expect(fromReader(cl.BytesReader(bytes)).toBytes(), bytes);
-});
+) =>
+    test("read/write", () {
+      final bytes = getWritable().toBytes();
+      expect(fromReader(cl.BytesReader(bytes)).toBytes(), bytes);
+    });
 
 Future<void> waitFor(bool Function() test) {
-
   final start = DateTime.now();
   final duration = Duration(seconds: 2);
 
@@ -24,5 +24,4 @@ Future<void> waitFor(bool Function() test) {
     }
     return cont;
   });
-
 }

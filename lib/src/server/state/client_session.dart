@@ -3,7 +3,6 @@ import 'package:noosphere_roast_client/noosphere_roast_client.dart';
 import 'ring_buffer.dart';
 
 class ClientSession implements Expirable {
-
   final Identifier participantId;
   final SessionID sessionID;
   @override
@@ -18,7 +17,6 @@ class ClientSession implements Expirable {
     required this.expiry,
     required void Function() onLostStream,
   }) {
-
     void flushEvents() {
       for (final event in eventBuffer.flushBuffer()) {
         eventController.add(event);
@@ -32,7 +30,6 @@ class ClientSession implements Expirable {
       // a connection to the event stream
       onCancel: onLostStream,
     );
-
   }
 
   void sendEvent(Event e) {
@@ -45,5 +42,4 @@ class ClientSession implements Expirable {
       eventController.add(e);
     }
   }
-
 }

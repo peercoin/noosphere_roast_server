@@ -10,7 +10,7 @@ class ChallengeDetails implements Expirable {
   final Identifier id;
   @override
   final Expiry expiry;
-  ChallengeDetails({ required this.id, required this.expiry });
+  ChallengeDetails({required this.id, required this.expiry});
 }
 
 /// Caches DKG acknowledgements to support sharing amongst participants. The
@@ -28,6 +28,7 @@ class CompletedSignatures implements Expirable {
   final Signed<SignaturesRequestDetails> details;
   final List<cl.SchnorrSignature> signatures;
   final Identifier creator;
+
   /// This is not set, but in the future can contain acknowledgements from
   /// participants when they have received the signature so that they do not
   /// receive it again and so that signatures can be removed when enough
@@ -44,18 +45,16 @@ class CompletedSignatures implements Expirable {
 }
 
 class ServerState {
-
   final challenges = ExpirableMap<AuthChallenge, ChallengeDetails>();
   late final ExpirableMap<SessionID, ClientSession> clientSessions;
   final participantToSession = ExpirableMap<Identifier, ClientSession>();
   final nameToDkg = ExpirableMap<String, DkgState>();
   final dkgAckCache = ExpirableMap<cl.ECPublicKey, DkgAckCache>();
-  final sigRequests = ExpirableMap<
-    SignaturesRequestId, SignaturesCoordinationState
-  >();
-  final completedSigs = ExpirableMap<
-    SignaturesRequestId, CompletedSignatures
-  >();
+  final sigRequests =
+      ExpirableMap<SignaturesRequestId, SignaturesCoordinationState>();
+  final completedSigs =
+      ExpirableMap<SignaturesRequestId, CompletedSignatures>();
+
   /// Maps the encrypted secret shares to a FROST group key for sharing to
   /// participants
   final Map<cl.ECCompressedPublicKey, KeySharingState> secretShares = {};
@@ -67,7 +66,6 @@ class ServerState {
   }
 
   void onEndSession(ClientSession session) {
-
     // Reset DKGs to round 1 as all participants need to remain online to
     // complete them
     for (final dkg in nameToDkg.values) {
@@ -86,23 +84,21 @@ class ServerState {
     sendEventToAll(
       ParticipantStatusEvent(id: session.participantId, loggedIn: false),
     );
-
   }
 
   Iterable<DkgState> get round1Dkgs => nameToDkg.values.where(
-    (dkg) => dkg.round is DkgRound1State,
-  );
+        (dkg) => dkg.round is DkgRound1State,
+      );
 
-  void sendEventToAll(Event e, { List<SessionID> exclude = const [] }) {
+  void sendEventToAll(Event e, {List<SessionID> exclude = const []}) {
     for (final session in clientSessions.values) {
       if (!exclude.contains(session.sessionID)) session.sendEvent(e);
     }
   }
 
-  void sendEventToOthers(Event e, SessionID sid)
-    => sendEventToAll(e, exclude: [sid]);
+  void sendEventToOthers(Event e, SessionID sid) =>
+      sendEventToAll(e, exclude: [sid]);
 
-  KeySharingState secretSharesForKey(cl.ECCompressedPublicKey key)
-    => secretShares[key] ??= KeySharingState();
-
+  KeySharingState secretSharesForKey(cl.ECCompressedPublicKey key) =>
+      secretShares[key] ??= KeySharingState();
 }

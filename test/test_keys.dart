@@ -15,31 +15,32 @@ final keyInfoHex = [
   "0330a4892d9d1e85857df6a04e7939a8bd29ab6e3c26bbe659e61ac20eb839294302000a00000000000000000000000000000000000000000000000000000000000000000102043937397e0d06d85ec20f3b763e9d7132aa8ad91791ef8508f413ed0ea750790000000000000000000000000000000000000000000000000000000000000002032051264ac6806579b434e45b9159018eee072dd2cc57d272fa632afd81ca8a280000000000000000000000000000000000000000000000000000000000000003032cda5f5f18b9c6fc1f118cb58d65facbde8da456c4ec5fbad1bea486615bdbab00000000000000000000000000000000000000000000000000000000000000040237813be560290657bf82fbfbc99d2d1079640bb1e6b916625e01f165fd8fd7c2000000000000000000000000000000000000000000000000000000000000000503f63f0863685f7541e8c8468559ddad29865f8f0211c2294fdc877306dc7c7dcb000000000000000000000000000000000000000000000000000000000000000603e13ba002c61ed2a9628db23db6fe3b8536833433f9d13acdabd3271b4bf950bf00000000000000000000000000000000000000000000000000000000000000070388d27cd0b957503def7ebe1c9c0a21f856ee0fdbb17dded2d2043bd488c1eb330000000000000000000000000000000000000000000000000000000000000008038077b89418331dcd40568adda68173f9c7829467c4d4422e2d86354677d0b431000000000000000000000000000000000000000000000000000000000000000902beb254eff1a4d59ea30da76b2e093aef33e24a749afe3f4e18b9a52f3bd188cc000000000000000000000000000000000000000000000000000000000000000a02ca0db26ef4a4dbba77eceaec03e5a81121933f38e591791668a169527614a14a000000000000000000000000000000000000000000000000000000000000000a99f83f0443e005ee7776b64357da63a8507673ad20fdc968f6bd35171b82e3ee",
 ];
 
-final groupPublicKeyHex
-  = "0330a4892d9d1e85857df6a04e7939a8bd29ab6e3c26bbe659e61ac20eb8392943";
+final groupPublicKeyHex =
+    "0330a4892d9d1e85857df6a04e7939a8bd29ab6e3c26bbe659e61ac20eb8392943";
 final groupPublicKey = cl.ECCompressedPublicKey.fromHex(groupPublicKeyHex);
 
 SignedDkgAck getDkgAck(
   int i,
   bool accepted, {
-    cl.ECCompressedPublicKey? groupKey,
-  }
-) => SignedDkgAck(
-  signer: ids[i],
-  signed: Signed.sign(
-    obj: DkgAck(groupKey: groupKey ?? groupPublicKey, accepted: accepted),
-    key: getPrivkey(i),
-  ),
-);
-
-InMemoryClientStorage storeWithKeyAndAcks(int i, Set<SignedDkgAck> acks)
-  => InMemoryClientStorage()..addOrReplaceFrostKey(
-    acks.fold(
-      FrostKeyWithDetails(
-        keyInfo: ParticipantKeyInfo.fromHex(keyInfoHex[i]),
-        name: "123",
-        description: "Desc",
+  cl.ECCompressedPublicKey? groupKey,
+}) =>
+    SignedDkgAck(
+      signer: ids[i],
+      signed: Signed.sign(
+        obj: DkgAck(groupKey: groupKey ?? groupPublicKey, accepted: accepted),
+        key: getPrivkey(i),
       ),
-      (details, ack) => details.addOrReplaceAck(ack),
-    ),
-  );
+    );
+
+InMemoryClientStorage storeWithKeyAndAcks(int i, Set<SignedDkgAck> acks) =>
+    InMemoryClientStorage()
+      ..addOrReplaceFrostKey(
+        acks.fold(
+          FrostKeyWithDetails(
+            keyInfo: ParticipantKeyInfo.fromHex(keyInfoHex[i]),
+            name: "123",
+            description: "Desc",
+          ),
+          (details, ack) => details.addOrReplaceAck(ack),
+        ),
+      );
