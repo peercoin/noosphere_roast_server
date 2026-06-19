@@ -99,13 +99,12 @@ class ServerState {
       );
 
   void sendEventToAll(Event e, {List<SessionID> exclude = const []}) {
-    final sessions = clientSessions.values.toList();
-    final recipients = sessions
+    final recipients = clientSessions.values
         .where((session) => !exclude.contains(session.sessionID))
         .toList();
     logger.d(
       "Broadcasting ${e.runtimeType} to ${recipients.length}/"
-      "${sessions.length} sessions",
+      "${clientSessions.values.length} sessions",
     );
     for (final session in recipients) {
       session.sendEvent(e);
