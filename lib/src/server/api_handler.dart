@@ -22,28 +22,21 @@ class ServerApiHandler implements ApiRequestInterface {
   static const currentProtocolVersion = 2;
 
   final ServerConfig config;
-  final ServerState state;
-  final Logger logger;
+  late final ServerState state;
+  late final Logger logger;
   final DateTime startTime = DateTime.now();
 
   /// Creates a backend API handler with the [config].
   ///
   /// A blank [state] and default [logger] will be created if not provided.
   ServerApiHandler({
-    required ServerConfig config,
+    required this.config,
     ServerState? state,
     Logger? logger,
-  }) : this._(
-          config: config,
-          state: state,
-          logger: logger ?? createNoosphereRoastServerLogger(),
-        );
-
-  ServerApiHandler._({
-    required this.config,
-    required this.logger,
-    ServerState? state,
-  }) : state = state ?? ServerState(logger: logger);
+  }) {
+    this.logger = logger ?? createNoosphereRoastServerLogger();
+    this.state = state ?? ServerState(logger: this.logger);
+  }
 
   int get _participantN => config.group.participants.length;
 
