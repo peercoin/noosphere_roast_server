@@ -198,7 +198,7 @@ void main() {
     });
 
     test('streams websocket events sent through server state fanout', () async {
-      final state = ServerState();
+      final state = ServerState(logger: api.logger);
       final creatorSid = _sid(1);
       final receiverSid = _sid(2);
 

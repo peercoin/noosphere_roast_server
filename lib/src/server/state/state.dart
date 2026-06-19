@@ -62,8 +62,8 @@ class ServerState {
   final Map<cl.ECCompressedPublicKey, KeySharingState> secretShares = {};
 
   ServerState({
-    Logger? logger,
-  }) : logger = logger ?? createNoosphereRoastServerLogger() {
+    required this.logger,
+  }) {
     clientSessions = ExpirableMap(
       onExpired: (_, session) => onEndSession(session),
     );
