@@ -18,10 +18,8 @@ SignaturesRequestId _sigReqId(List<int> li) =>
     SignaturesRequestId.fromBytes(_bytes(li));
 
 String _encodeBytes(List<int> bytes) => base64Encode(bytes);
-String _encodeUrlBytes(List<int> bytes) => base64UrlEncode(bytes).replaceAll(
-      RegExp(r'=+$'),
-      '',
-    );
+String _encodeUrlBytes(List<int> bytes) =>
+    base64UrlEncode(bytes).replaceAll('=', '');
 
 Uint8List _decodeBytes(String value) {
   final base64Value = value.replaceAll('-', '+').replaceAll('_', '/');
@@ -95,7 +93,7 @@ class RestWebSocketNoosphereService {
       shelf_io.serve(handler, address, port);
 
   Future<Response> _login(Request request) =>
-      _handleJson(request, logger, () async {
+      _handleRequest(request, logger, () async {
         final json = await _readJson(request);
         final resp = await api.login(
           groupFingerprint: _fieldBytes(json, 'groupFingerprint'),
@@ -107,7 +105,7 @@ class RestWebSocketNoosphereService {
         return _bytesResponse(resp.toBytes());
       });
 
-  Future<Response> _respondToChallenge(Request request) => _handleJson(
+  Future<Response> _respondToChallenge(Request request) => _handleRequest(
         request,
         logger,
         () async {
@@ -123,7 +121,7 @@ class RestWebSocketNoosphereService {
       );
 
   Future<Response> _extendSession(Request request) =>
-      _handleJson(request, logger, () async {
+      _handleRequest(request, logger, () async {
         final json = await _readJson(request);
         final resp = await api.extendSession(_sid(_fieldBytes(json, 'sid')));
         return _bytesResponse(resp.toBytes());
@@ -189,20 +187,22 @@ class RestWebSocketNoosphereService {
         final json = await _readJson(request);
         await api.sendDkgAcks(
           sid: _sid(_fieldBytes(json, 'sid')),
-          acks: _fieldStringList(json, 'acks')
-              .map((ack) => SignedDkgAck.fromBytes(_decodeBytes(ack)))
-              .toSet(),
+          acks: _fieldBytesList(
+            json,
+            'acks',
+          ).map(SignedDkgAck.fromBytes).toSet(),
         );
       });
 
   Future<Response> _requestDkgAcks(Request request) =>
-      _handleJson(request, logger, () async {
+      _handleRequest(request, logger, () async {
         final json = await _readJson(request);
         final resp = await api.requestDkgAcks(
           sid: _sid(_fieldBytes(json, 'sid')),
-          requests: _fieldStringList(json, 'requests')
-              .map((req) => DkgAckRequest.fromBytes(_decodeBytes(req)))
-              .toSet(),
+          requests: _fieldBytesList(
+            json,
+            'requests',
+          ).map(DkgAckRequest.fromBytes).toSet(),
         );
         return _repeatedBytesResponse(resp.map((ack) => ack.toBytes()));
       });
@@ -212,20 +212,18 @@ class RestWebSocketNoosphereService {
         final json = await _readJson(request);
         await api.requestSignatures(
           sid: _sid(_fieldBytes(json, 'sid')),
-          keys: _fieldStringList(json, 'keys')
-              .map((key) => AggregateKeyInfo.fromBytes(_decodeBytes(key)))
-              .toSet(),
+          keys: _fieldBytesList(
+            json,
+            'keys',
+          ).map(AggregateKeyInfo.fromBytes).toSet(),
           signedDetails: Signed.fromBytes(
             _fieldBytes(json, 'signedDetails'),
             (reader) => SignaturesRequestDetails.fromReader(reader),
           ),
-          commitments: _fieldStringList(json, 'commitments')
-              .map(
-                (commitment) => SigningCommitment.fromBytes(
-                  _decodeBytes(commitment),
-                ),
-              )
-              .toList(),
+          commitments: _fieldBytesList(
+            json,
+            'commitments',
+          ).map(SigningCommitment.fromBytes).toList(),
         );
       });
 
@@ -239,14 +237,15 @@ class RestWebSocketNoosphereService {
       });
 
   Future<Response> _submitSignatureReplies(Request request) =>
-      _handleJson(request, logger, () async {
+      _handleRequest(request, logger, () async {
         final json = await _readJson(request);
         final resp = await api.submitSignatureReplies(
           sid: _sid(_fieldBytes(json, 'sid')),
           reqId: _sigReqId(_fieldBytes(json, 'reqId')),
-          replies: _fieldStringList(json, 'replies')
-              .map((reply) => SignatureReply.fromBytes(_decodeBytes(reply)))
-              .toList(),
+          replies: _fieldBytesList(
+            json,
+            'replies',
+          ).map(SignatureReply.fromBytes).toList(),
         );
 
         return _jsonResponse({
@@ -260,7 +259,7 @@ class RestWebSocketNoosphereService {
       });
 
   Future<Response> _shareSecretShare(Request request) =>
-      _handleJson(request, logger, () async {
+      _handleRequest(request, logger, () async {
         final json = await _readJson(request);
         final resp = await api.shareSecretShare(
           sid: _sid(_fieldBytes(json, 'sid')),
@@ -365,33 +364,13 @@ Future<Response> _handleEmpty(
   Logger logger,
   Future<void> Function() action,
 ) async {
-  final description = _requestDescription(request);
-  logger.d("REST $description received");
-  try {
+  return _handleRequest(request, logger, () async {
     await action();
-    logger.d("REST $description completed");
     return _jsonResponse({});
-  } on InvalidRequest catch (e) {
-    logger.w(
-      "REST $description rejected: ${e.message}",
-    );
-    return _jsonResponse({'error': e.message}, status: 400);
-  } on FormatException catch (e) {
-    logger.w(
-      "REST $description rejected: ${e.message}",
-    );
-    return _jsonResponse({'error': e.message}, status: 400);
-  } on Exception catch (e, stackTrace) {
-    logger.e(
-      "REST $description failed",
-      error: e,
-      stackTrace: stackTrace,
-    );
-    return _jsonResponse({'error': 'Internal server error'}, status: 500);
-  }
+  });
 }
 
-Future<Response> _handleJson(
+Future<Response> _handleRequest(
   Request request,
   Logger logger,
   Future<Response> Function() action,
@@ -491,6 +470,9 @@ List<String> _fieldStringList(Map<String, dynamic> json, String name) {
     return entry;
   }).toList();
 }
+
+Iterable<Uint8List> _fieldBytesList(Map<String, dynamic> json, String name) =>
+    _fieldStringList(json, name).map(_decodeBytes);
 
 String _webSocketEvent(Event event, Logger logger) {
   final type = _eventType(event);
