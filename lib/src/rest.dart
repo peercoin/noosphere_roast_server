@@ -49,10 +49,6 @@ Middleware restWebSocketCors({
           return response.change(headers: {...response.headers, ...headers});
         };
 
-@Deprecated('Use restWebSocketCors.')
-Middleware restSseCors({String allowOrigin = '*'}) =>
-    restWebSocketCors(allowOrigin: allowOrigin);
-
 class RestWebSocketNoosphereService {
   final ServerApiHandler api;
   final String? allowOrigin;
@@ -364,15 +360,6 @@ class RestWebSocketNoosphereService {
   }
 }
 
-@Deprecated('Use RestWebSocketNoosphereService.')
-class RestSseNoosphereService extends RestWebSocketNoosphereService {
-  RestSseNoosphereService({
-    required super.api,
-    super.allowOrigin,
-    super.logger,
-  });
-}
-
 Future<Response> _handleEmpty(
   Request request,
   Logger logger,
@@ -533,6 +520,3 @@ String _eventType(Event event) => switch (event) {
 
 String restWebSocketSessionPath(SessionID sid) =>
     '/sessions/${_encodeUrlBytes(sid.n)}/events';
-
-@Deprecated('Use restWebSocketSessionPath.')
-String restSseSessionPath(SessionID sid) => restWebSocketSessionPath(sid);
