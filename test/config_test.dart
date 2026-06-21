@@ -26,6 +26,12 @@ void yamlTest<T extends MapWritable>(
 
 final grpcConfig = GrpcConfig(server: serverConfig, port: 80);
 
+String _indentYaml(String yaml) => yaml
+    .split('\n')
+    .where((line) => line.isNotEmpty)
+    .map((line) => '  $line')
+    .join('\n');
+
 void main() {
   setUpAll(loadFrosty);
 
@@ -48,5 +54,13 @@ void main() {
       (yaml) => GrpcConfig.fromYaml(yaml),
       (config) => config.toHex(),
     );
+
+    test("defaults to port 50051 when YAML port is omitted", () {
+      final config = GrpcConfig.fromYaml(
+        'server:\n${_indentYaml(serverConfig.yaml)}\n',
+      );
+
+      expect(config.port, GrpcConfig.defaultPort);
+    });
   });
 }

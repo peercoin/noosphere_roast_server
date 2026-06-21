@@ -74,7 +74,8 @@ RUN dart pub get
 
 COPY . .
 RUN dart pub get --offline
-RUN dart compile exe bin/grpc_server.dart -o /out/noosphere_roast_server
+RUN mkdir -p /out \
+  && dart compile exe bin/grpc_server.dart -o /out/noosphere_roast_server
 
 FROM docker.io/library/debian:bookworm-slim
 
@@ -91,7 +92,7 @@ COPY --from=frosty-build /out/libfrosty_rust.so /app/build/libfrosty_rust.so
 COPY --from=secp256k1-build /out/libsecp256k1.so /app/build/libsecp256k1.so
 ENV LD_LIBRARY_PATH="/app/build:/usr/local/lib"
 
-EXPOSE 50051
+EXPOSE 50051 8080
 
 ENTRYPOINT ["/app/noosphere_roast_server", "--config"]
-CMD ["/config/server.yaml"]
+CMD ["/config/server.yaml", "--rest-address", "0.0.0.0", "--rest-port", "8080"]

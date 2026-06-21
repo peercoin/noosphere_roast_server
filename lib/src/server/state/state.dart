@@ -1,6 +1,7 @@
 import 'package:coinlib/coinlib.dart' as cl;
 import 'package:noosphere_roast_client/common.dart';
 import 'package:noosphere_roast_client/noosphere_roast_client.dart';
+import 'package:noosphere_roast_server/src/logging.dart';
 import 'client_session.dart';
 import 'dkg.dart';
 import 'key_sharing.dart';
@@ -45,6 +46,7 @@ class CompletedSignatures implements Expirable {
 }
 
 class ServerState {
+  final Logger logger;
   final challenges = ExpirableMap<AuthChallenge, ChallengeDetails>();
   late final ExpirableMap<SessionID, ClientSession> clientSessions;
   final participantToSession = ExpirableMap<Identifier, ClientSession>();
@@ -59,13 +61,19 @@ class ServerState {
   /// participants
   final Map<cl.ECCompressedPublicKey, KeySharingState> secretShares = {};
 
-  ServerState() {
+  ServerState({
+    required this.logger,
+  }) {
     clientSessions = ExpirableMap(
       onExpired: (_, session) => onEndSession(session),
     );
   }
 
   void onEndSession(ClientSession session) {
+    logger.i(
+      "Participant session ended: ${session.participantId}",
+    );
+
     // Reset DKGs to round 1 as all participants need to remain online to
     // complete them
     for (final dkg in nameToDkg.values) {
@@ -91,8 +99,15 @@ class ServerState {
       );
 
   void sendEventToAll(Event e, {List<SessionID> exclude = const []}) {
-    for (final session in clientSessions.values) {
-      if (!exclude.contains(session.sessionID)) session.sendEvent(e);
+    final recipients = clientSessions.values
+        .where((session) => !exclude.contains(session.sessionID))
+        .toList();
+    logger.d(
+      "Broadcasting ${e.runtimeType} to ${recipients.length}/"
+      "${clientSessions.values.length} sessions",
+    );
+    for (final session in recipients) {
+      session.sendEvent(e);
     }
   }
 

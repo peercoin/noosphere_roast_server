@@ -5,6 +5,7 @@ import 'package:collection/collection.dart';
 import 'package:coinlib/coinlib.dart' as cl;
 import 'package:noosphere_roast_client/noosphere_roast_client.dart';
 import 'package:noosphere_roast_server/src/config/server.dart';
+import 'package:noosphere_roast_server/src/logging.dart';
 import 'package:noosphere_roast_server/src/server/state/key_sharing.dart';
 import 'state/signatures_coordination.dart';
 import 'state/client_session.dart';
@@ -21,15 +22,21 @@ class ServerApiHandler implements ApiRequestInterface {
   static const currentProtocolVersion = 2;
 
   final ServerConfig config;
-  final ServerState state;
+  late final ServerState state;
+  late final Logger logger;
   final DateTime startTime = DateTime.now();
 
-  /// Creates a backend API handler with the [config]. A blank [state] will be
-  /// created if not provided.
+  /// Creates a backend API handler with the [config].
+  ///
+  /// A blank [state] and default [logger] will be created if not provided.
   ServerApiHandler({
     required this.config,
     ServerState? state,
-  }) : state = state ?? ServerState();
+    Logger? logger,
+  }) {
+    this.logger = logger ?? createNoosphereRoastServerLogger();
+    this.state = state ?? ServerState(logger: this.logger);
+  }
 
   int get _participantN => config.group.participants.length;
 
@@ -86,6 +93,10 @@ class ServerApiHandler implements ApiRequestInterface {
     state.challenges[challenge] = ChallengeDetails(
       id: participantId,
       expiry: expiry,
+    );
+
+    logger.i(
+      "Issued auth challenge for participant $participantId",
     );
 
     return ExpirableAuthChallengeResponse(challenge: challenge, expiry: expiry);
@@ -156,6 +167,8 @@ class ServerApiHandler implements ApiRequestInterface {
         session?.sendEvent(KeepaliveEvent());
       });
     }
+
+    logger.i("Participant logged in: $pid");
 
     return LoginCompleteResponse(
       id: sessionId,
@@ -271,6 +284,11 @@ class ServerApiHandler implements ApiRequestInterface {
       commitments: commitments,
     );
 
+    logger.i(
+      "DKG requested: name=${details.name} creator=${session.participantId} "
+      "threshold=${details.threshold}",
+    );
+
     // Broadcast to other participants
     state.sendEventToOthers(dkgEvent, sid);
   }
@@ -279,6 +297,10 @@ class ServerApiHandler implements ApiRequestInterface {
   Future<void> rejectDkg({required SessionID sid, required String name}) async {
     final participantId = getSession(sid).participantId;
     if (state.nameToDkg.remove(name) != null) {
+      logger.i(
+        "DKG rejected: name=$name participant=$participantId",
+      );
+
       // Send an event to all other participants that the DKG was removed
       state.sendEventToOthers(
         DkgRejectEvent(name: name, participant: participantId),
@@ -312,6 +334,9 @@ class ServerApiHandler implements ApiRequestInterface {
       final commitmentSet = DkgCommitmentSet(commitments);
       dkg.round = DkgRound2State(
         expectedHash: dkg.details.obj.hashWithCommitments(commitmentSet),
+      );
+      logger.i(
+        "DKG advanced to round 2: name=$name commitments=${commitments.length}",
       );
     }
 
@@ -372,6 +397,7 @@ class ServerApiHandler implements ApiRequestInterface {
     if (round.participantsProvided.length == _participantN - 1) {
       // Remove DKG
       state.nameToDkg.remove(name);
+      logger.i("DKG completed: name=$name");
       // No details of the key are stored on the server as only the participants
       // can generate the public information at this point.
     } else {
@@ -416,6 +442,8 @@ class ServerApiHandler implements ApiRequestInterface {
 
     // Do not send events if there are no new ACKs
     if (newAcks.isEmpty) return;
+
+    logger.i("DKG acknowledgements received: ${newAcks.length}");
 
     // Send ACKs to participants, ensuring that their own ACKs aren't sent
     // Do not send to calling participant
@@ -485,6 +513,10 @@ class ServerApiHandler implements ApiRequestInterface {
     }
 
     if (need.isNotEmpty) {
+      logger.d(
+        "Requested missing DKG acknowledgements: ${need.length}",
+      );
+
       // Send DkgAckRequestEvents for missing ACKs
       state.sendEventToOthers(DkgAckRequestEvent(need), sid);
     }
@@ -557,6 +589,11 @@ class ServerApiHandler implements ApiRequestInterface {
       ),
       sid,
     );
+
+    logger.i(
+      "Signatures requested: id=${details.id.toHex()} creator=$pid "
+      "signatures=$numSigs",
+    );
   }
 
   void _checkSigReqFail(SignaturesCoordinationState sigReqState) {
@@ -571,6 +608,10 @@ class ServerApiHandler implements ApiRequestInterface {
     if (available < maxThreshold) {
       // Cannot sign one of the signatures as threshold is too high
       final id = sigReqState.details.obj.id;
+      logger.w(
+        "Signatures request failed: id=${id.toHex()} available=$available "
+        "required=$maxThreshold",
+      );
       state.sendEventToAll(SignaturesFailureEvent(id));
       state.sigRequests.remove(id);
     }
@@ -592,6 +633,9 @@ class ServerApiHandler implements ApiRequestInterface {
     if (sigReq.malicious.contains(pid)) return;
 
     sigReq.rejectors.add(pid);
+    logger.i(
+      "Signatures request rejected: id=${reqId.toHex()} participant=$pid",
+    );
     _checkSigReqFail(sigReq);
   }
 
@@ -611,6 +655,10 @@ class ServerApiHandler implements ApiRequestInterface {
 
     void throwMalicious(InvalidRequest exp) {
       sigReq.malicious.add(pid);
+      logger.w(
+        "Participant marked malicious for signatures request: "
+        "id=${reqId.toHex()} participant=$pid reason=${exp.message}",
+      );
       _checkSigReqFail(sigReq);
       throw exp;
     }
@@ -768,12 +816,22 @@ class ServerApiHandler implements ApiRequestInterface {
         sid,
       );
 
+      logger.i(
+        "Signatures request completed: id=${reqId.toHex()} "
+        "signatures=${signatures.length}",
+      );
+
       return SignaturesCompleteResponse(signatures);
     }
 
     // If there are any new rounds, return them and send events to round
     // participants
     if (newRounds.isNotEmpty) {
+      logger.d(
+        "Signature rounds started: id=${reqId.toHex()} "
+        "participants=${newRounds.length}",
+      );
+
       for (final id in newRounds.keys.where((id) => id != pid)) {
         state.participantToSession[id]?.sendEvent(
           SignatureNewRoundsEvent(reqId: reqId, rounds: newRounds[id]!),
@@ -816,14 +874,21 @@ class ServerApiHandler implements ApiRequestInterface {
     // events.
 
     final secrets = state.secretSharesForKey(groupKey);
+    var addedShares = 0;
 
     for (final MapEntry(key: id, value: share) in encryptedSecrets.entries) {
       if (secrets.maybeAddShare(pid, id, share)) {
+        addedShares++;
         state.participantToSession[id]?.sendEvent(
           SecretShareEvent(sender: pid, keyShare: share, groupKey: groupKey),
         );
       }
     }
+
+    logger.i(
+      "Secret shares received: sender=$pid receivers=${encryptedSecrets.length} "
+      "new=$addedShares",
+    );
 
     // Return cached ConstructedKeyEvents for unneeded secrets
     return secrets.eventsForCompleted(encryptedSecrets.keys);
@@ -859,12 +924,21 @@ class ServerApiHandler implements ApiRequestInterface {
 
     // Send event to other participants
     state.sendEventToOthers(event, sid);
+
+    logger.i(
+      "Constructed key acknowledged: participant=$pid",
+    );
   }
 
   /// Closes all client session streams
-  Future<void> shutdown() => Future.wait(
-        state.clientSessions.values.map(
-          (session) => session.eventController.close(),
-        ),
-      );
+  Future<void> shutdown() {
+    logger.i(
+      "Shutting down API handler: sessions=${state.clientSessions.values.length}",
+    );
+    return Future.wait(
+      state.clientSessions.values.map(
+        (session) => session.eventController.close(),
+      ),
+    );
+  }
 }

@@ -1,40 +1,63 @@
 import 'dart:async';
-import 'dart:typed_data';
 import 'package:coinlib/coinlib.dart' as cl;
 import 'package:grpc/grpc.dart' as grpc;
 import 'package:noosphere_roast_client/pbgrpc.dart' as pb;
 import 'package:noosphere_roast_client/noosphere_roast_client.dart';
+import 'package:noosphere_roast_server/src/common.dart' as common;
+import 'package:noosphere_roast_server/src/logging.dart';
 import 'package:noosphere_roast_server/src/server/api_handler.dart';
 import 'package:noosphere_roast_server/src/server/state/client_session.dart';
-
-Uint8List _bytes(List<int> li) => Uint8List.fromList(li);
-SessionID _sid(List<int> li) => SessionID.fromBytes(_bytes(li));
-SignaturesRequestId _sigReqId(List<int> li) =>
-    SignaturesRequestId.fromBytes(_bytes(li));
 pb.Bytes _returnWritable(cl.Writable writable) => pb.Bytes(
       data: writable.toBytes(),
     );
 
 class FrostNoosphereService extends pb.NoosphereServiceBase {
   final ServerApiHandler api;
+  final Logger logger;
 
-  FrostNoosphereService({required this.api});
+  FrostNoosphereService({
+    required this.api,
+    Logger? logger,
+  }) : logger = logger ?? api.logger;
 
   grpc.Server createServer() => grpc.Server.create(services: [this]);
 
-  grpc.GrpcError _wrapException(Exception e) =>
-      grpc.GrpcError.unknown(e.toString());
+  grpc.GrpcError _wrapException(
+    String method,
+    Exception e, [
+    StackTrace? stackTrace,
+  ]) {
+    if (e is InvalidRequest) {
+      logger.w("gRPC $method rejected: ${e.message}");
+    } else {
+      logger.e(
+        "gRPC $method failed",
+        error: e,
+        stackTrace: stackTrace,
+      );
+    }
+    return grpc.GrpcError.unknown(e.toString());
+  }
 
-  Future<T> _handleExceptions<T>(Future<T> Function() f) async {
+  Future<T> _handleExceptions<T>(
+    String method,
+    Future<T> Function() f,
+  ) async {
+    logger.d("gRPC $method received");
     try {
-      return await f();
-    } on Exception catch (e) {
-      throw _wrapException(e);
+      final result = await f();
+      logger.d("gRPC $method completed");
+      return result;
+    } on Exception catch (e, stackTrace) {
+      throw _wrapException(method, e, stackTrace);
     }
   }
 
-  Future<pb.Empty> _handleEmpty(Future<void> Function() f) async {
-    await _handleExceptions(f);
+  Future<pb.Empty> _handleEmpty(
+    String method,
+    Future<void> Function() f,
+  ) async {
+    await _handleExceptions(method, f);
     return pb.Empty();
   }
 
@@ -43,11 +66,11 @@ class FrostNoosphereService extends pb.NoosphereServiceBase {
     grpc.ServiceCall call,
     pb.LoginRequest request,
   ) =>
-      _handleExceptions(() async {
+      _handleExceptions("login", () async {
         final resp = await api.login(
-          groupFingerprint: _bytes(request.groupFingerprint),
+          groupFingerprint: common.bytes(request.groupFingerprint),
           participantId: Identifier.fromBytes(
-            _bytes(request.participantId),
+            common.bytes(request.participantId),
           ),
           protocolVersion: request.protocolVersion,
         );
@@ -60,11 +83,11 @@ class FrostNoosphereService extends pb.NoosphereServiceBase {
     grpc.ServiceCall call,
     pb.SignedAuthChallenge request,
   ) =>
-      _handleExceptions(() async {
+      _handleExceptions("respondToChallenge", () async {
         final resp = await api.respondToChallenge(
           Signed<AuthChallenge>(
-            obj: AuthChallenge.fromBytes(_bytes(request.challenge)),
-            signature: cl.SchnorrSignature(_bytes(request.signature)),
+            obj: AuthChallenge.fromBytes(common.bytes(request.challenge)),
+            signature: cl.SchnorrSignature(common.bytes(request.signature)),
           ),
         );
 
@@ -76,24 +99,40 @@ class FrostNoosphereService extends pb.NoosphereServiceBase {
     grpc.ServiceCall call,
     pb.Bytes request,
   ) {
-    final sessionId = _sid(request.data);
+    final sessionId = common.sid(request.data);
     late final ClientSession session;
     try {
       session = api.getSession(sessionId);
-    } on Exception catch (e) {
-      throw _wrapException(e);
+    } on Exception catch (e, stackTrace) {
+      throw _wrapException("fetchEventStream", e, stackTrace);
     }
+
+    logger.d(
+      "gRPC fetchEventStream opened for participant ${session.participantId}",
+    );
 
     // sendTrailers is not always called automatically when the stream ends
     // despite the documentation.
     // Without calling this, the grpc stream may hang and never close.
     final controller = StreamController<Event>(
-      onCancel: () => call.sendTrailers(),
+      onCancel: () {
+        logger.d(
+          "gRPC fetchEventStream canceled for participant "
+          "${session.participantId}",
+        );
+        call.sendTrailers();
+      },
     );
     // When upstream stream is done, cancel this one
     controller.addStream(session.eventController.stream).then(
-          (_) => controller.close(),
+      (_) {
+        logger.d(
+          "gRPC fetchEventStream closed for participant "
+          "${session.participantId}",
         );
+        return controller.close();
+      },
+    );
 
     // Pass across all events
     return controller.stream.map(
@@ -124,8 +163,8 @@ class FrostNoosphereService extends pb.NoosphereServiceBase {
     grpc.ServiceCall call,
     pb.Bytes request,
   ) =>
-      _handleExceptions(() async {
-        final resp = await api.extendSession(_sid(request.data));
+      _handleExceptions("extendSession", () async {
+        final resp = await api.extendSession(common.sid(request.data));
         return _returnWritable(resp);
       });
 
@@ -135,14 +174,15 @@ class FrostNoosphereService extends pb.NoosphereServiceBase {
     pb.DkgRequest request,
   ) =>
       _handleEmpty(
+        "requestNewDkg",
         () => api.requestNewDkg(
-          sid: _sid(request.sid),
+          sid: common.sid(request.sid),
           signedDetails: Signed<NewDkgDetails>.fromBytes(
-            _bytes(request.signedDetails),
+            common.bytes(request.signedDetails),
             (reader) => NewDkgDetails.fromReader(reader),
           ),
           commitment: DkgPublicCommitment.fromBytes(
-            _bytes(request.commitment),
+            common.bytes(request.commitment),
           ),
         ),
       );
@@ -153,7 +193,8 @@ class FrostNoosphereService extends pb.NoosphereServiceBase {
     pb.DkgToReject request,
   ) =>
       _handleEmpty(
-        () => api.rejectDkg(sid: _sid(request.sid), name: request.name),
+        "rejectDkg",
+        () => api.rejectDkg(sid: common.sid(request.sid), name: request.name),
       );
 
   @override
@@ -162,11 +203,12 @@ class FrostNoosphereService extends pb.NoosphereServiceBase {
     pb.DkgCommitment request,
   ) =>
       _handleEmpty(
+        "submitDkgCommitment",
         () => api.submitDkgCommitment(
-          sid: _sid(request.sid),
+          sid: common.sid(request.sid),
           name: request.name,
           commitment: DkgPublicCommitment.fromBytes(
-            _bytes(request.commitment),
+            common.bytes(request.commitment),
           ),
         ),
       );
@@ -177,16 +219,17 @@ class FrostNoosphereService extends pb.NoosphereServiceBase {
     pb.DkgRound2 request,
   ) =>
       _handleEmpty(
+        "submitDkgRound2",
         () => api.submitDkgRound2(
-          sid: _sid(request.sid),
+          sid: common.sid(request.sid),
           name: request.name,
           commitmentSetSignature: cl.SchnorrSignature(
-            _bytes(request.commitmentSetSignature),
+            common.bytes(request.commitmentSetSignature),
           ),
           secrets: {
             for (final secret in request.secrets)
-              Identifier.fromBytes(_bytes(secret.id)): DkgEncryptedSecret(
-                ECCiphertext.fromBytes(_bytes(secret.secret)),
+              Identifier.fromBytes(common.bytes(secret.id)): DkgEncryptedSecret(
+                ECCiphertext.fromBytes(common.bytes(secret.secret)),
               ),
           },
         ),
@@ -198,11 +241,12 @@ class FrostNoosphereService extends pb.NoosphereServiceBase {
     pb.DkgAcks request,
   ) =>
       _handleEmpty(
+        "sendDkgAcks",
         () => api.sendDkgAcks(
-          sid: _sid(request.sid),
+          sid: common.sid(request.sid),
           acks: request.acks
               .map(
-                (ack) => SignedDkgAck.fromBytes(_bytes(ack)),
+                (ack) => SignedDkgAck.fromBytes(common.bytes(ack)),
               )
               .toSet(),
         ),
@@ -213,12 +257,12 @@ class FrostNoosphereService extends pb.NoosphereServiceBase {
     grpc.ServiceCall call,
     pb.DkgAckRequest request,
   ) =>
-      _handleExceptions(() async {
+      _handleExceptions("requestDkgAcks", () async {
         final resp = await api.requestDkgAcks(
-          sid: _sid(request.sid),
+          sid: common.sid(request.sid),
           requests: request.requests
               .map(
-                (request) => DkgAckRequest.fromBytes(_bytes(request)),
+                (request) => DkgAckRequest.fromBytes(common.bytes(request)),
               )
               .toSet(),
         );
@@ -232,20 +276,21 @@ class FrostNoosphereService extends pb.NoosphereServiceBase {
     pb.SignaturesRequest request,
   ) =>
       _handleEmpty(
+        "requestSignatures",
         () => api.requestSignatures(
-          sid: _sid(request.sid),
+          sid: common.sid(request.sid),
           keys: request.keys
               .map(
-                (key) => AggregateKeyInfo.fromBytes(_bytes(key)),
+                (key) => AggregateKeyInfo.fromBytes(common.bytes(key)),
               )
               .toSet(),
           signedDetails: Signed.fromBytes(
-            _bytes(request.signedDetails),
+            common.bytes(request.signedDetails),
             (reader) => SignaturesRequestDetails.fromReader(reader),
           ),
           commitments: request.commitments
               .map(
-                (commitment) => SigningCommitment.fromBytes(_bytes(commitment)),
+                (commitment) => SigningCommitment.fromBytes(common.bytes(commitment)),
               )
               .toList(),
         ),
@@ -257,9 +302,10 @@ class FrostNoosphereService extends pb.NoosphereServiceBase {
     pb.SignaturesRejection request,
   ) =>
       _handleEmpty(
+        "rejectSignaturesRequest",
         () => api.rejectSignaturesRequest(
-          sid: _sid(request.sid),
-          reqId: _sigReqId(request.reqId),
+          sid: common.sid(request.sid),
+          reqId: common.sigReqId(request.reqId),
         ),
       );
 
@@ -268,13 +314,13 @@ class FrostNoosphereService extends pb.NoosphereServiceBase {
     grpc.ServiceCall call,
     pb.SignaturesReplies request,
   ) =>
-      _handleExceptions(() async {
+      _handleExceptions("submitSignatureReplies", () async {
         final resp = await api.submitSignatureReplies(
-          sid: _sid(request.sid),
-          reqId: _sigReqId(request.reqId),
+          sid: common.sid(request.sid),
+          reqId: common.sigReqId(request.reqId),
           replies: request.replies
               .map(
-                (reply) => SignatureReply.fromBytes(_bytes(reply)),
+                (reply) => SignatureReply.fromBytes(common.bytes(reply)),
               )
               .toList(),
         );
@@ -296,14 +342,14 @@ class FrostNoosphereService extends pb.NoosphereServiceBase {
     grpc.ServiceCall call,
     pb.SecretShare request,
   ) =>
-      _handleExceptions(() async {
+      _handleExceptions("shareSecretShare", () async {
         final resp = await api.shareSecretShare(
-          sid: _sid(request.sid),
-          groupKey: cl.ECCompressedPublicKey(_bytes(request.groupKey)),
+          sid: common.sid(request.sid),
+          groupKey: cl.ECCompressedPublicKey(common.bytes(request.groupKey)),
           encryptedSecrets: {
             for (final secret in request.secrets)
-              Identifier.fromBytes(_bytes(secret.id)): EncryptedKeyShare(
-                ECCiphertext.fromBytes(_bytes(secret.share)),
+              Identifier.fromBytes(common.bytes(secret.id)): EncryptedKeyShare(
+                ECCiphertext.fromBytes(common.bytes(secret.share)),
               ),
           },
         );
@@ -317,10 +363,11 @@ class FrostNoosphereService extends pb.NoosphereServiceBase {
     pb.ConstructedKey request,
   ) =>
       _handleEmpty(
+        "ackKeyConstructed",
         () => api.ackKeyConstructed(
-          sid: _sid(request.sid),
+          sid: common.sid(request.sid),
           constructedKey: Signed<KeyWasConstructed>.fromBytes(
-            _bytes(request.constructedKey),
+            common.bytes(request.constructedKey),
             (reader) => KeyWasConstructed.fromReader(reader),
           ),
         ),

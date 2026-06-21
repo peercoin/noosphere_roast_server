@@ -4,12 +4,14 @@ import 'package:noosphere_roast_client/noosphere_roast_client.dart';
 import 'server.dart';
 
 class GrpcConfig with cl.Writable, MapWritable {
+  static const defaultPort = 50051;
+
   final ServerConfig server;
   final int port;
 
   GrpcConfig({
     required this.server,
-    required this.port,
+    this.port = defaultPort,
   });
 
   GrpcConfig.fromReader(cl.BytesReader reader)
@@ -28,7 +30,7 @@ class GrpcConfig with cl.Writable, MapWritable {
   GrpcConfig.fromMapReader(MapReader reader)
       : this(
           server: ServerConfig.fromMapReader(reader["server"]),
-          port: reader["port"].require(),
+          port: reader["port"].value<int>() ?? defaultPort,
         );
 
   GrpcConfig.fromYaml(String yaml)
