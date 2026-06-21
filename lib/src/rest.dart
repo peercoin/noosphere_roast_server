@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:coinlib/coinlib.dart' as cl;
 import 'package:noosphere_roast_client/noosphere_roast_client.dart';
+import 'package:noosphere_roast_server/src/common.dart' as common;
 import 'package:noosphere_roast_server/src/logging.dart';
 import 'package:noosphere_roast_server/src/server/api_handler.dart';
 import 'package:shelf/shelf.dart';
@@ -12,13 +13,8 @@ import 'package:shelf_router/shelf_router.dart';
 import 'package:shelf_web_socket/shelf_web_socket.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
-Uint8List _bytes(List<int> li) => Uint8List.fromList(li);
-SessionID _sid(List<int> li) => SessionID.fromBytes(_bytes(li));
-SignaturesRequestId _sigReqId(List<int> li) =>
-    SignaturesRequestId.fromBytes(_bytes(li));
-
-String _encodeBytes(List<int> bytes) => base64Encode(bytes);
-String _encodeUrlBytes(List<int> bytes) =>
+String _base64Encode(List<int> bytes) => base64Encode(bytes);
+String _base64UrlEncode(List<int> bytes) =>
     base64UrlEncode(bytes).replaceAll('=', '');
 
 Uint8List _decodeBytes(String value) {
@@ -123,7 +119,7 @@ class RestWebSocketNoosphereService {
   Future<Response> _extendSession(Request request) =>
       _handleRequest(request, logger, () async {
         final json = await _readJson(request);
-        final resp = await api.extendSession(_sid(_fieldBytes(json, 'sid')));
+        final resp = await api.extendSession(common.sid(_fieldBytes(json, 'sid')));
         return _bytesResponse(resp.toBytes());
       });
 
@@ -131,7 +127,7 @@ class RestWebSocketNoosphereService {
       _handleEmpty(request, logger, () async {
         final json = await _readJson(request);
         await api.requestNewDkg(
-          sid: _sid(_fieldBytes(json, 'sid')),
+          sid: common.sid(_fieldBytes(json, 'sid')),
           signedDetails: Signed<NewDkgDetails>.fromBytes(
             _fieldBytes(json, 'signedDetails'),
             (reader) => NewDkgDetails.fromReader(reader),
@@ -146,7 +142,7 @@ class RestWebSocketNoosphereService {
       _handleEmpty(request, logger, () async {
         final json = await _readJson(request);
         await api.rejectDkg(
-          sid: _sid(_fieldBytes(json, 'sid')),
+          sid: common.sid(_fieldBytes(json, 'sid')),
           name: _fieldString(json, 'name'),
         );
       });
@@ -155,7 +151,7 @@ class RestWebSocketNoosphereService {
       _handleEmpty(request, logger, () async {
         final json = await _readJson(request);
         await api.submitDkgCommitment(
-          sid: _sid(_fieldBytes(json, 'sid')),
+          sid: common.sid(_fieldBytes(json, 'sid')),
           name: _fieldString(json, 'name'),
           commitment: DkgPublicCommitment.fromBytes(
             _fieldBytes(json, 'commitment'),
@@ -167,7 +163,7 @@ class RestWebSocketNoosphereService {
       _handleEmpty(request, logger, () async {
         final json = await _readJson(request);
         await api.submitDkgRound2(
-          sid: _sid(_fieldBytes(json, 'sid')),
+          sid: common.sid(_fieldBytes(json, 'sid')),
           name: _fieldString(json, 'name'),
           commitmentSetSignature: cl.SchnorrSignature(
             _fieldBytes(json, 'commitmentSetSignature'),
@@ -186,7 +182,7 @@ class RestWebSocketNoosphereService {
       _handleEmpty(request, logger, () async {
         final json = await _readJson(request);
         await api.sendDkgAcks(
-          sid: _sid(_fieldBytes(json, 'sid')),
+          sid: common.sid(_fieldBytes(json, 'sid')),
           acks: _fieldBytesList(
             json,
             'acks',
@@ -198,7 +194,7 @@ class RestWebSocketNoosphereService {
       _handleRequest(request, logger, () async {
         final json = await _readJson(request);
         final resp = await api.requestDkgAcks(
-          sid: _sid(_fieldBytes(json, 'sid')),
+          sid: common.sid(_fieldBytes(json, 'sid')),
           requests: _fieldBytesList(
             json,
             'requests',
@@ -211,7 +207,7 @@ class RestWebSocketNoosphereService {
       _handleEmpty(request, logger, () async {
         final json = await _readJson(request);
         await api.requestSignatures(
-          sid: _sid(_fieldBytes(json, 'sid')),
+          sid: common.sid(_fieldBytes(json, 'sid')),
           keys: _fieldBytesList(
             json,
             'keys',
@@ -231,8 +227,8 @@ class RestWebSocketNoosphereService {
       _handleEmpty(request, logger, () async {
         final json = await _readJson(request);
         await api.rejectSignaturesRequest(
-          sid: _sid(_fieldBytes(json, 'sid')),
-          reqId: _sigReqId(_fieldBytes(json, 'reqId')),
+          sid: common.sid(_fieldBytes(json, 'sid')),
+          reqId: common.sigReqId(_fieldBytes(json, 'reqId')),
         );
       });
 
@@ -240,8 +236,8 @@ class RestWebSocketNoosphereService {
       _handleRequest(request, logger, () async {
         final json = await _readJson(request);
         final resp = await api.submitSignatureReplies(
-          sid: _sid(_fieldBytes(json, 'sid')),
-          reqId: _sigReqId(_fieldBytes(json, 'reqId')),
+          sid: common.sid(_fieldBytes(json, 'sid')),
+          reqId: common.sigReqId(_fieldBytes(json, 'reqId')),
           replies: _fieldBytesList(
             json,
             'replies',
@@ -254,7 +250,7 @@ class RestWebSocketNoosphereService {
             SignaturesCompleteResponse() => 'complete',
             null => 'empty',
           },
-          'data': resp == null ? null : _encodeBytes(resp.toBytes()),
+          'data': resp == null ? null : _base64Encode(resp.toBytes()),
         });
       });
 
@@ -262,7 +258,7 @@ class RestWebSocketNoosphereService {
       _handleRequest(request, logger, () async {
         final json = await _readJson(request);
         final resp = await api.shareSecretShare(
-          sid: _sid(_fieldBytes(json, 'sid')),
+          sid: common.sid(_fieldBytes(json, 'sid')),
           groupKey: cl.ECCompressedPublicKey(_fieldBytes(json, 'groupKey')),
           encryptedSecrets: {
             for (final secret in _fieldList(json, 'secrets'))
@@ -279,7 +275,7 @@ class RestWebSocketNoosphereService {
       _handleEmpty(request, logger, () async {
         final json = await _readJson(request);
         await api.ackKeyConstructed(
-          sid: _sid(_fieldBytes(json, 'sid')),
+          sid: common.sid(_fieldBytes(json, 'sid')),
           constructedKey: Signed<KeyWasConstructed>.fromBytes(
             _fieldBytes(json, 'constructedKey'),
             (reader) => KeyWasConstructed.fromReader(reader),
@@ -291,7 +287,7 @@ class RestWebSocketNoosphereService {
     final description = _requestDescription(request);
     logger.d("REST $description received");
     try {
-      final session = api.getSession(_sid(_decodeBytes(sid)));
+      final session = api.getSession(common.sid(_decodeBytes(sid)));
       final handler = webSocketHandler(
         (WebSocketChannel webSocket, String? _) {
           logger.d("REST $description opened");
@@ -359,6 +355,11 @@ class RestWebSocketNoosphereService {
   }
 }
 
+Response _rejectResponse(String description, String message, Logger logger) {
+  logger.w("REST $description rejected: $message");
+  return _jsonResponse({'error': message}, status: 400);
+}
+
 Future<Response> _handleEmpty(
   Request request,
   Logger logger,
@@ -382,15 +383,9 @@ Future<Response> _handleRequest(
     logger.d("REST $description completed");
     return response;
   } on InvalidRequest catch (e) {
-    logger.w(
-      "REST $description rejected: ${e.message}",
-    );
-    return _jsonResponse({'error': e.message}, status: 400);
+    return _rejectResponse(description, e.message, logger);
   } on FormatException catch (e) {
-    logger.w(
-      "REST $description rejected: ${e.message}",
-    );
-    return _jsonResponse({'error': e.message}, status: 400);
+    return _rejectResponse(description, e.message, logger);
   } on Exception catch (e, stackTrace) {
     logger.e(
       "REST $description failed",
@@ -409,11 +404,10 @@ String _requestDescription(Request request) {
 Future<Map<String, dynamic>> _readJson(Request request) async {
   final body = await request.readAsString();
   final decoded = jsonDecode(body);
-  if (decoded is! Map) throw const FormatException('Expected JSON object');
-  return {
-    for (final entry in decoded.entries)
-      if (entry.key is String) entry.key as String: entry.value,
-  };
+  if (decoded is! Map<String, dynamic>) {
+    throw const FormatException('Expected JSON object');
+  }
+  return decoded;
 }
 
 Response _jsonResponse(Object value, {int status = 200}) => Response(
@@ -423,10 +417,10 @@ Response _jsonResponse(Object value, {int status = 200}) => Response(
     );
 
 Response _bytesResponse(List<int> bytes) =>
-    _jsonResponse({'data': _encodeBytes(bytes)});
+    _jsonResponse({'data': _base64Encode(bytes)});
 
 Response _repeatedBytesResponse(Iterable<List<int>> bytes) =>
-    _jsonResponse({'data': bytes.map(_encodeBytes).toList()});
+    _jsonResponse({'data': bytes.map(_base64Encode).toList()});
 
 String _fieldString(Map<String, dynamic> json, String name) {
   final value = json[name];
@@ -460,26 +454,23 @@ List<Map<String, dynamic>> _fieldList(Map<String, dynamic> json, String name) {
   }).toList();
 }
 
-List<String> _fieldStringList(Map<String, dynamic> json, String name) {
+Iterable<Uint8List> _fieldBytesList(Map<String, dynamic> json, String name) {
   final value = json[name];
   if (value is! List) throw FormatException('Expected "$name" to be a list');
   return value.map((entry) {
     if (entry is! String) {
       throw FormatException('Expected "$name" entries to be strings');
     }
-    return entry;
-  }).toList();
+    return _decodeBytes(entry);
+  });
 }
-
-Iterable<Uint8List> _fieldBytesList(Map<String, dynamic> json, String name) =>
-    _fieldStringList(json, name).map(_decodeBytes);
 
 String _webSocketEvent(Event event, Logger logger) {
   final type = _eventType(event);
   logger.d("REST WebSocket sent $type");
   return jsonEncode({
     'type': type,
-    'data': _encodeBytes(event.toBytes()),
+    'data': _base64Encode(event.toBytes()),
   });
 }
 
@@ -501,4 +492,4 @@ String _eventType(Event event) => switch (event) {
     };
 
 String restWebSocketSessionPath(SessionID sid) =>
-    '/sessions/${_encodeUrlBytes(sid.n)}/events';
+    '/sessions/${_base64UrlEncode(sid.n)}/events';
