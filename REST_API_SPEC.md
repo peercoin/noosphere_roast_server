@@ -15,6 +15,8 @@ All `POST` endpoints:
 - Request header should include `Content-Type: application/json`.
 - Binary/domain objects are base64 strings of the same `.toBytes()` payloads
   used by the gRPC client.
+- The REST API takes the same binary payloads gRPC sends as protobuf `bytes`,
+  then base64-encodes them so JSON can carry them.
 - The server accepts standard base64 or URL-safe base64, with or without
   padding.
 - Do not send gRPC/protobuf wrapper messages to REST; send the underlying
